@@ -51,6 +51,9 @@ app.post("/webhook", async (req, res) => {
             // Log the response from the predict endpoint
             console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
+            // Log current database contents
+            await logDatabaseContents();
+
             const intent = intentData.intent;
             const phoneNumber = message.from;
 
