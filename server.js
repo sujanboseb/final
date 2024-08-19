@@ -29,6 +29,16 @@ const opts = {
 const couch = nano(opts);
 const db = couch.use('sujan');
 
+// Function to log current database contents
+async function logDatabaseContents() {
+    try {
+        const allDocs = await db.list({ include_docs: true });
+        console.log("Current database contents:", JSON.stringify(allDocs.rows, null, 2));
+    } catch (error) {
+        console.error("Error fetching database contents:", error);
+    }
+}
+
 app.post("/webhook", async (req, res) => {
     console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
     const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
@@ -92,6 +102,9 @@ app.post("/webhook", async (req, res) => {
                 await db.insert(bookingData);
                 res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
 
+                // Log the current database contents after booking
+                await logDatabaseContents();
+
             } else if (intent === "meeting_booking_stats") {
                 // Fetch all bookings made by the phone number
                 const bookings = await db.find({
@@ -105,6 +118,9 @@ app.post("/webhook", async (req, res) => {
                 console.log("Bookings retrieved for phone number:", JSON.stringify(bookings.docs, null, 2));
 
                 res.json({ bookings: bookings.docs });
+
+                // Log the current database contents after retrieving stats
+                await logDatabaseContents();
             }
 
         } catch (error) {
