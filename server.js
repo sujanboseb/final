@@ -34,67 +34,82 @@ app.post("/webhook", async (req, res) => {
     const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
 
     if (message?.type === "text") {
-        const response = await axios.post('https://377c-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
-        const intentData = response.data;
+        try {
+            const response = await axios.post('https://377c-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
+            const intentData = response.data;
 
-        const intent = intentData.intent;
-        const phoneNumber = message.from;
+            // Log the response from the predict endpoint
+            console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
-        if (intent === "meeting_booking") {
-            const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
+            const intent = intentData.intent;
+            const phoneNumber = message.from;
 
-            // Check for existing booking conflicts
-            const existingBookings = await db.find({
-                selector: {
-                    "data.hall_name": hall_name,
-                    "data.date": date,
-                    "$or": [
-                        {
-                            "data.strating_time": { "$lte": ending_time },
-                            "data.ending_time": { "$gte": starting_time }
-                        }
-                    ]
+            if (intent === "meeting_booking") {
+                const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
+
+                // Check for existing booking conflicts
+                const existingBookings = await db.find({
+                    selector: {
+                        "data.hall_name": hall_name,
+                        "data.date": date,
+                        "$or": [
+                            {
+                                "data.strating_time": { "$lte": ending_time },
+                                "data.ending_time": { "$gte": starting_time }
+                            }
+                        ]
+                    }
+                });
+
+                // Log the existing bookings found
+                console.log("Existing bookings found:", JSON.stringify(existingBookings.docs, null, 2));
+
+                if (existingBookings.docs.length > 0) {
+                    res.json({ error: "Another meeting has been booked during this time in the same hall." });
+                    return;
                 }
-            });
 
-            if (existingBookings.docs.length > 0) {
-                res.json({ error: "Another meeting has been booked during this time in the same hall." });
-                return;
+                // Generate a unique meeting ID
+                const existingDocs = await db.list({ include_docs: true });
+                const meetingCount = existingDocs.rows.length + 1;
+                const meetingId = `meetingbooking:${meetingCount}`;
+
+                // Store the booking
+                const bookingData = {
+                    _id: meetingId,
+                    data: {
+                        date,
+                        intent,
+                        hall_name,
+                        no_of_persons,
+                        strating_time: starting_time,
+                        ending_time,
+                        employee: phoneNumber,
+                        booking_reason: reason
+                    }
+                };
+
+                await db.insert(bookingData);
+                res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
+
+            } else if (intent === "meeting_booking_stats") {
+                // Fetch all bookings made by the phone number
+                const bookings = await db.find({
+                    selector: {
+                        "data.employee": phoneNumber,
+                        "data.intent": "meeting_booking"
+                    }
+                });
+
+                // Log the bookings retrieved for the phone number
+                console.log("Bookings retrieved for phone number:", JSON.stringify(bookings.docs, null, 2));
+
+                res.json({ bookings: bookings.docs });
             }
 
-            // Generate a unique meeting ID
-            const existingDocs = await db.list({ include_docs: true });
-            const meetingCount = existingDocs.rows.length + 1;
-            const meetingId = `meetingbooking:${meetingCount}`;
-
-            // Store the booking
-            const bookingData = {
-                _id: meetingId,
-                data: {
-                    date,
-                    intent,
-                    hall_name,
-                    no_of_persons,
-                    strating_time: starting_time,
-                    ending_time,
-                    employee: phoneNumber,
-                    booking_reason: reason
-                }
-            };
-
-            await db.insert(bookingData);
-            res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
-
-        } else if (intent === "meeting_booking_stats") {
-            // Fetch all bookings made by the phone number
-            const bookings = await db.find({
-                selector: {
-                    "data.employee": phoneNumber,
-                    "data.intent": "meeting_booking"
-                }
-            });
-
-            res.json({ bookings: bookings.docs });
+        } catch (error) {
+            console.error("Error processing webhook:", error);
+            res.sendStatus(500);
         }
     }
 
