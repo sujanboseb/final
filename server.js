@@ -34,7 +34,7 @@ app.post("/webhook", async (req, res) => {
     const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
 
     if (message?.type === "text") {
-        const response = await axios.post('https://3221-34-124-199-150.ngrok-free.app', { text: message.text.body });
+        const response = await axios.post('https://377c-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
         const intentData = response.data;
 
         const intent = intentData.intent;
