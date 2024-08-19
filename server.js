@@ -3,11 +3,13 @@ const express = require("express");
 const axios = require("axios");
 const https = require("https");
 const nano = require("nano");
+const cors = require("cors"); // Import the cors package
 
 const app = express();
 app.use(express.json());
+app.use(cors()); // Use cors middleware to enable CORS
 
-const { WEBHOOK_VERIFY_TOKEN, GRAPH_API_TOKEN, PORT } = process.env;
+const { WEBHOOK_VERIFY_TOKEN, PORT } = process.env;
 
 const url = 'https://192.168.57.185:5984';
 const httpsAgent = new https.Agent({
@@ -29,6 +31,7 @@ const opts = {
 const couch = nano(opts);
 const db = couch.use('sujan');
 
+// Function to log current database contents
 async function logDatabaseContents() {
     try {
         console.log("Attempting to connect to CouchDB...");
@@ -50,7 +53,6 @@ async function logDatabaseContents() {
         }
     }
 }
-
 
 app.post("/webhook", async (req, res) => {
     console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
@@ -140,12 +142,13 @@ app.post("/webhook", async (req, res) => {
             }
 
         } catch (error) {
-            console.error("Error processing webhook:", error);
+            console.error("Error processing webhook:", error.message);
+            console.error("Stack trace:", error.stack);
             res.sendStatus(500);
         }
+    } else {
+        res.sendStatus(400); // Bad request if message type is not text
     }
-
-    res.sendStatus(200);
 });
 
 app.get("/webhook", (req, res) => {
