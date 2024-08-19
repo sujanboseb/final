@@ -29,15 +29,28 @@ const opts = {
 const couch = nano(opts);
 const db = couch.use('sujan');
 
-// Function to log current database contents
 async function logDatabaseContents() {
     try {
+        console.log("Attempting to connect to CouchDB...");
         const allDocs = await db.list({ include_docs: true });
+        console.log("Successfully fetched database contents.");
         console.log("Current database contents:", JSON.stringify(allDocs.rows, null, 2));
     } catch (error) {
-        console.error("Error fetching database contents:", error);
+        console.error("Error fetching database contents:", error.message);
+        console.error("Stack trace:", error.stack);
+        // Additional network-related error logs
+        if (error.response) {
+            console.error("Response error:", error.response.status, error.response.statusText);
+            console.error("Response data:", error.response.data);
+        } else if (error.request) {
+            console.error("Request made but no response received.");
+            console.error("Request details:", error.request);
+        } else {
+            console.error("Error setting up request:", error.message);
+        }
     }
 }
+
 
 app.post("/webhook", async (req, res) => {
     console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
