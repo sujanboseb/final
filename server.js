@@ -28,9 +28,18 @@ async function connectToMongoDB() {
   }
 }
 
+function parsePredictResponse(response) {
+  // Split the response by commas and convert it to an object
+  const parts = response.split(',').map(part => part.trim().split(': '));
+  const parsedData = {};
+  parts.forEach(([key, value]) => {
+    parsedData[key.trim()] = value.trim();
+  });
+  return parsedData;
+}
+
 async function generateMeetingId(collection) {
   try {
-    // Find the highest meetingId in the collection
     const lastEntry = await collection
       .find({ _id: /^meetingbooking:/ })
       .sort({ _id: -1 })
@@ -60,10 +69,12 @@ app.post("/webhook", async (req, res) => {
 
   if (message?.type === "text") {
     try {
-      const response = await axios.post('https://962b-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
-      const intentData = response.data;
+      const response = await axios.post('https://52fd-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
 
-      console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
+      // Parse the predict endpoint's response string into an object
+      const intentData = parsePredictResponse(response.data);
+
+      console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
       const collection = await connectToMongoDB();
 
@@ -73,7 +84,6 @@ app.post("/webhook", async (req, res) => {
       if (intent === "meeting_booking") {
         const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
 
-        // Check for existing booking conflicts
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
           "data.date": date,
@@ -90,10 +100,8 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
-        // Generate a unique meeting ID
         const meetingId = await generateMeetingId(collection);
 
-        // Store the booking
         const bookingData = {
           _id: meetingId,
           data: {
