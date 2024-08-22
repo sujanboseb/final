@@ -1,73 +1,143 @@
+require('dotenv').config();
 const express = require("express");
 const axios = require("axios");
-require('dotenv').config();  // Load environment variables from a .env file
+const { MongoClient, ServerApiVersion } = require('mongodb');
 
 const app = express();
 app.use(express.json());
 
 const { WEBHOOK_VERIFY_TOKEN, GRAPH_API_TOKEN, PORT } = process.env;
 
+const uri = "mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
+async function connectToMongoDB() {
+  try {
+    await client.connect();
+    console.log("Connected to MongoDB");
+    return client.db('sujan').collection('meeting booking');
+  } catch (error) {
+    console.error("Error connecting to MongoDB:", error);
+    throw error;
+  }
+}
+
+async function generateMeetingId(collection) {
+  try {
+    // Find the highest meetingId in the collection
+    const lastEntry = await collection
+      .find({ _id: /^meetingbooking:/ })
+      .sort({ _id: -1 })
+      .limit(1)
+      .toArray();
+
+    let meetingId;
+
+    if (lastEntry.length > 0) {
+      const lastMeetingId = lastEntry[0]._id;
+      const lastIdNumber = parseInt(lastMeetingId.split(':')[1]);
+      meetingId = `meetingbooking:${lastIdNumber + 1}`;
+    } else {
+      meetingId = "meetingbooking:1";
+    }
+
+    return meetingId;
+  } catch (error) {
+    console.error("Error generating meeting ID:", error);
+    throw error;
+  }
+}
+
 app.post("/webhook", async (req, res) => {
-  // log incoming messages
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
+  const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
 
-  // check if the webhook request contains a message
-  const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-
-  // check if the incoming message contains text
   if (message?.type === "text") {
-    // extract the business number to send the reply from it
-    const business_phone_number_id =
-      req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+    try {
+      const response = await axios.post('https://04bb-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
+      const intentData = response.data;
 
-    // send a reply message
-    await axios({
-      method: "POST",
-      url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
-      headers: {
-        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
-      },
-      data: {
-        messaging_product: "whatsapp",
-        to: message.from,
-        text: { body: "Echo: " + message.text.body },
-        context: {
-          message_id: message.id, // shows the message as a reply to the original user message
-        },
-      },
-    });
+      console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
-    // mark incoming message as read
-    await axios({
-      method: "POST",
-      url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
-      headers: {
-        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
-      },
-      data: {
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: message.id,
-      },
-    });
+      const collection = await connectToMongoDB();
+
+      const intent = intentData.intent;
+      const phoneNumber = message.from;
+
+      if (intent === "meeting_booking") {
+        const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
+
+        // Check for existing booking conflicts
+        const existingBookings = await collection.find({
+          "data.hall_name": hall_name,
+          "data.date": date,
+          "$or": [
+            {
+              "data.strating_time": { "$lte": ending_time },
+              "data.ending_time": { "$gte": starting_time }
+            }
+          ]
+        }).toArray();
+
+        if (existingBookings.length > 0) {
+          res.json({ error: "Another meeting has been booked during this time in the same hall." });
+          return;
+        }
+
+        // Generate a unique meeting ID
+        const meetingId = await generateMeetingId(collection);
+
+        // Store the booking
+        const bookingData = {
+          _id: meetingId,
+          data: {
+            date,
+            intent,
+            hall_name,
+            no_of_persons,
+            strating_time: starting_time,
+            ending_time,
+            employee: phoneNumber,
+            booking_reason: reason
+          }
+        };
+
+        await collection.insertOne(bookingData);
+        res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
+
+      } else if (intent === "meeting_booking_stats") {
+        const bookings = await collection.find({
+          "data.employee": phoneNumber,
+          "data.intent": "meeting_booking"
+        }).toArray();
+
+        res.json({ bookings });
+      }
+
+    } catch (error) {
+      console.error("Error processing webhook:", error);
+      res.sendStatus(500);
+    }
   }
 
   res.sendStatus(200);
 });
 
-// accepts GET requests at the /webhook endpoint
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  // check the mode and token sent are correct
   if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
-    // respond with 200 OK and challenge token from the request
     res.status(200).send(challenge);
     console.log("Webhook verified successfully!");
   } else {
-    // respond with '403 Forbidden' if verify tokens do not match
     res.sendStatus(403);
   }
 });
@@ -77,6 +147,6 @@ app.get("/", (req, res) => {
 Checkout README.md to start.</pre>`);
 });
 
-app.listen(PORT || 3000, () => {
-  console.log(`Server is listening on port: ${PORT || 3000}`);
+app.listen(PORT, () => {
+  console.log(`Server is listening on port: ${PORT}`);
 });
