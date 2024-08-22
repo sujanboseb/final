@@ -44,14 +44,24 @@ async function generateMeetingId(collection) {
 }
 
 function parsePredictResponse(response) {
-  try {
-    // Assuming response is a JSON string, parse it accordingly
-    return JSON.parse(response);
-  } catch (error) {
-    console.error("Error parsing predict response:", error);
-    return {};
+  // If response is plain text, process it as such
+  if (typeof response === 'string') {
+    const result = {};
+    // Split by commas to separate key-value pairs
+    const pairs = response.split(',').map(pair => pair.trim());
+    // Iterate over pairs to build the result object
+    pairs.forEach(pair => {
+      const [key, value] = pair.split(':').map(part => part.trim());
+      if (key && value) {
+        result[key] = value;
+      }
+    });
+    return result;
   }
+  // Handle other response formats as needed
+  return {};
 }
+
 
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
@@ -126,6 +136,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
