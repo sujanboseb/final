@@ -69,7 +69,7 @@ app.post("/webhook", async (req, res) => {
 
   if (message?.type === "text") {
     try {
-      const response = await axios.post('https://52fd-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
+      const response = await axios.post('https://962b-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
 
       // Parse the predict endpoint's response string into an object
       const intentData = parsePredictResponse(response.data);
