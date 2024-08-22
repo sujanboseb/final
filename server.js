@@ -6,60 +6,50 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 const app = express();
 app.use(express.json());
 
-const { WEBHOOK_VERIFY_TOKEN, GRAPH_API_TOKEN, PORT } = process.env;
+const { WEBHOOK_VERIFY_TOKEN, PORT } = process.env;
 
-const uri = "mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  }
-});
+const mongoUri = `mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const dbName = 'sujan';
+const collectionName = 'meeting booking';
+
+let dbClient;
+let collection;
 
 async function connectToMongoDB() {
-  try {
-    await client.connect();
-    console.log("Connected to MongoDB");
-    return client.db('sujan').collection('meeting booking');
-  } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
-    throw error;
-  }
-}
+  if (!dbClient) {
+    dbClient = new MongoClient(mongoUri, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      }
+    });
 
-function parsePredictResponse(response) {
-  // Split the response by commas and convert it to an object
-  const parts = response.split(',').map(part => part.trim().split(': '));
-  const parsedData = {};
-  parts.forEach(([key, value]) => {
-    parsedData[key.trim()] = value.trim();
-  });
-  return parsedData;
+    try {
+      await dbClient.connect();
+      console.log("Connected to MongoDB");
+      collection = dbClient.db(dbName).collection(collectionName);
+    } catch (error) {
+      console.error("Error connecting to MongoDB:", error);
+      throw error;
+    }
+  }
+  return collection;
 }
 
 async function generateMeetingId(collection) {
+  const lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
+  const lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
+  return `meetingbooking:${lastId + 1}`;
+}
+
+function parsePredictResponse(response) {
   try {
-    const lastEntry = await collection
-      .find({ _id: /^meetingbooking:/ })
-      .sort({ _id: -1 })
-      .limit(1)
-      .toArray();
-
-    let meetingId;
-
-    if (lastEntry.length > 0) {
-      const lastMeetingId = lastEntry[0]._id;
-      const lastIdNumber = parseInt(lastMeetingId.split(':')[1]);
-      meetingId = `meetingbooking:${lastIdNumber + 1}`;
-    } else {
-      meetingId = "meetingbooking:1";
-    }
-
-    return meetingId;
+    // Assuming response is a JSON string, parse it accordingly
+    return JSON.parse(response);
   } catch (error) {
-    console.error("Error generating meeting ID:", error);
-    throw error;
+    console.error("Error parsing predict response:", error);
+    return {};
   }
 }
 
@@ -70,14 +60,11 @@ app.post("/webhook", async (req, res) => {
   if (message?.type === "text") {
     try {
       const response = await axios.post('https://962b-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
-
-      // Parse the predict endpoint's response string into an object
       const intentData = parsePredictResponse(response.data);
 
       console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
       const collection = await connectToMongoDB();
-
       const intent = intentData.intent;
       const phoneNumber = message.from;
 
@@ -118,7 +105,7 @@ app.post("/webhook", async (req, res) => {
 
         await collection.insertOne(bookingData);
         res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
-
+        return;
       } else if (intent === "meeting_booking_stats") {
         const bookings = await collection.find({
           "data.employee": phoneNumber,
@@ -126,15 +113,18 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         res.json({ bookings });
+        return;
       }
+
+      res.json({ error: "Intent not recognized" });
 
     } catch (error) {
       console.error("Error processing webhook:", error);
       res.sendStatus(500);
     }
+  } else {
+    res.sendStatus(200);
   }
-
-  res.sendStatus(200);
 });
 
 app.get("/webhook", (req, res) => {
