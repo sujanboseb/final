@@ -60,7 +60,7 @@ app.post("/webhook", async (req, res) => {
 
   if (message?.type === "text") {
     try {
-      const response = await axios.post('https://04bb-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
+      const response = await axios.post('https://962b-35-247-108-98.ngrok-free.app/predict', { text: message.text.body });
       const intentData = response.data;
 
       console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
