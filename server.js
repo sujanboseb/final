@@ -1,174 +1,82 @@
-require('dotenv').config();
 const express = require("express");
 const axios = require("axios");
-const https = require("https");
-const nano = require("nano");
-const cors = require("cors"); // Import the cors package
+require('dotenv').config();  // Load environment variables from a .env file
 
 const app = express();
 app.use(express.json());
-app.use(cors()); // Use cors middleware to enable CORS
 
-const { WEBHOOK_VERIFY_TOKEN, PORT } = process.env;
-
-const url = 'https://192.168.57.185:5984';
-const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
-});
-
-const opts = {
-    url: url,
-    requestDefaults: {
-        agent: httpsAgent,
-        auth: {
-            username: 'd_couchdb',
-            password: 'Welcome#2'
-        }
-    }
-};
-
-// Initialize CouchDB connection
-const couch = nano(opts);
-const db = couch.use('sujan');
-
-// Function to log current database contents
-async function logDatabaseContents() {
-    try {
-        console.log("Attempting to connect to CouchDB...");
-        const allDocs = await db.list({ include_docs: true });
-        console.log("Successfully fetched database contents.");
-        console.log("Current database contents:", JSON.stringify(allDocs.rows, null, 2));
-    } catch (error) {
-        console.error("Error fetching database contents:", error.message);
-        console.error("Stack trace:", error.stack);
-        // Additional network-related error logs
-        if (error.response) {
-            console.error("Response error:", error.response.status, error.response.statusText);
-            console.error("Response data:", error.response.data);
-        } else if (error.request) {
-            console.error("Request made but no response received.");
-            console.error("Request details:", error.request);
-        } else {
-            console.error("Error setting up request:", error.message);
-        }
-    }
-}
+const { WEBHOOK_VERIFY_TOKEN, GRAPH_API_TOKEN, PORT } = process.env;
 
 app.post("/webhook", async (req, res) => {
-    console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
-    const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
+  // log incoming messages
+  console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
-    if (message?.type === "text") {
-        try {
-            const response = await axios.post('https://3d88-35-247-20-2.ngrok-free.app/predict', { text: message.text.body });
-            const intentData = response.data;
+  // check if the webhook request contains a message
+  const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-            // Log the response from the predict endpoint
-            console.log("Response from predict endpoint:", JSON.stringify(intentData, null, 2));
+  // check if the incoming message contains text
+  if (message?.type === "text") {
+    // extract the business number to send the reply from it
+    const business_phone_number_id =
+      req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
-            // Log current database contents
-            await logDatabaseContents();
+    // send a reply message
+    await axios({
+      method: "POST",
+      url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+      headers: {
+        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+      },
+      data: {
+        messaging_product: "whatsapp",
+        to: message.from,
+        text: { body: "Echo: " + message.text.body },
+        context: {
+          message_id: message.id, // shows the message as a reply to the original user message
+        },
+      },
+    });
 
-            const intent = intentData.intent;
-            const phoneNumber = message.from;
+    // mark incoming message as read
+    await axios({
+      method: "POST",
+      url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+      headers: {
+        Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+      },
+      data: {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: message.id,
+      },
+    });
+  }
 
-            if (intent === "meeting_booking") {
-                const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
-
-                // Check for existing booking conflicts
-                const existingBookings = await db.find({
-                    selector: {
-                        "data.hall_name": hall_name,
-                        "data.date": date,
-                        "$or": [
-                            {
-                                "data.strating_time": { "$lte": ending_time },
-                                "data.ending_time": { "$gte": starting_time }
-                            }
-                        ]
-                    }
-                });
-
-                // Log the existing bookings found
-                console.log("Existing bookings found:", JSON.stringify(existingBookings.docs, null, 2));
-
-                if (existingBookings.docs.length > 0) {
-                    res.json({ error: "Another meeting has been booked during this time in the same hall." });
-                    return;
-                }
-
-                // Generate a unique meeting ID
-                const existingDocs = await db.list({ include_docs: true });
-                const meetingCount = existingDocs.rows.length + 1;
-                const meetingId = `meetingbooking:${meetingCount}`;
-
-                // Store the booking
-                const bookingData = {
-                    _id: meetingId,
-                    data: {
-                        date,
-                        intent,
-                        hall_name,
-                        no_of_persons,
-                        strating_time: starting_time,
-                        ending_time,
-                        employee: phoneNumber,
-                        booking_reason: reason
-                    }
-                };
-
-                await db.insert(bookingData);
-                res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
-
-                // Log the current database contents after booking
-                await logDatabaseContents();
-
-            } else if (intent === "meeting_booking_stats") {
-                // Fetch all bookings made by the phone number
-                const bookings = await db.find({
-                    selector: {
-                        "data.employee": phoneNumber,
-                        "data.intent": "meeting_booking"
-                    }
-                });
-
-                // Log the bookings retrieved for the phone number
-                console.log("Bookings retrieved for phone number:", JSON.stringify(bookings.docs, null, 2));
-
-                res.json({ bookings: bookings.docs });
-
-                // Log the current database contents after retrieving stats
-                await logDatabaseContents();
-            }
-
-        } catch (error) {
-            console.error("Error processing webhook:", error.message);
-            console.error("Stack trace:", error.stack);
-            res.sendStatus(500);
-        }
-    } else {
-        res.sendStatus(400); // Bad request if message type is not text
-    }
+  res.sendStatus(200);
 });
 
+// accepts GET requests at the /webhook endpoint
 app.get("/webhook", (req, res) => {
-    const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
 
-    if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
-        res.status(200).send(challenge);
-        console.log("Webhook verified successfully!");
-    } else {
-        res.sendStatus(403);
-    }
+  // check the mode and token sent are correct
+  if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
+    // respond with 200 OK and challenge token from the request
+    res.status(200).send(challenge);
+    console.log("Webhook verified successfully!");
+  } else {
+    // respond with '403 Forbidden' if verify tokens do not match
+    res.sendStatus(403);
+  }
 });
 
 app.get("/", (req, res) => {
-    res.send(`<pre>Nothing to see here.
+  res.send(`<pre>Nothing to see here.
 Checkout README.md to start.</pre>`);
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is listening on port: ${PORT}`);
+app.listen(PORT || 3000, () => {
+  console.log(`Server is listening on port: ${PORT || 3000}`);
 });
