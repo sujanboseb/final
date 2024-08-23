@@ -60,20 +60,17 @@ function parsePredictResponse(response) {
 
 async function sendMessageToUser(phoneNumber, message) {
   try {
-    await axios.post(
-      `https://graph.facebook.com/v17.0/${process.env.PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: phoneNumber,
-        text: { body: message }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-          "Content-Type": "application/json"
-        }
+    const response = await axios.post('https://graph.facebook.com/v20.0/375773435616684/messages', {
+      messaging_product: "whatsapp",
+      to: phoneNumber,
+      text: { body: message }
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WHATSAPP_API_TOKEN}`
       }
-    );
+    });
+    console.log("Message sent to user:", response.data);
   } catch (error) {
     console.error("Error sending message to user:", error);
   }
@@ -82,38 +79,38 @@ async function sendMessageToUser(phoneNumber, message) {
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
   const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
-  const phoneNumber = message?.from;
 
   if (message?.type === "text") {
     try {
-      const response = await axios.post('https://0e10-35-230-118-105.ngrok-free.app/predict', { text: message.text.body });
+      const response = await axios.post('https://d80c-35-230-118-105.ngrok-free.app/predict', { text: message.text.body });
       const intentData = parsePredictResponse(response.data);
 
       console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
       const collection = await connectToMongoDB();
       const intent = intentData.intent;
+      const phoneNumber = message.from;
 
       if (intent === "meeting_booking") {
         const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
 
-        const missingFields = [];
-        if (!date) missingFields.push('date');
-        if (!hall_name) missingFields.push('hall_name');
-        if (!no_of_persons) missingFields.push('no_of_persons');
-        if (!starting_time) missingFields.push('starting_time');
-        if (!ending_time) missingFields.push('ending_time');
-        if (!reason) missingFields.push('reason');
-
-        if (missingFields.length > 0) {
-          let errorMessage;
-          if (missingFields.includes('reason')) {
-            errorMessage = "You have been missing reason to enter. Please enter reasons like project discussion, client meeting, knowledge transfer, change in availability.";
-          } else {
-            errorMessage = `The following fields are missing: ${missingFields.join(', ')}. Please start entering from the first onwards.`;
+        if (!date || !hall_name || !no_of_persons || !starting_time || !ending_time || !reason) {
+          const missingFields = [];
+          if (!date) missingFields.push("date");
+          if (!hall_name) missingFields.push("hall name");
+          if (!no_of_persons) missingFields.push("number of persons");
+          if (!starting_time) missingFields.push("starting time");
+          if (!ending_time) missingFields.push("ending time");
+          if (!reason) {
+            const reasonMessage = "You have been missing the reason. Please enter reasons like project discussion, client meeting, knowledge transfer, or change in availability.";
+            await sendMessageToUser(phoneNumber, reasonMessage);
+            res.sendStatus(200);
+            return;
           }
-          await sendMessageToUser(phoneNumber, errorMessage);
-          res.json({ error: errorMessage });
+
+          const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
+          await sendMessageToUser(phoneNumber, missingMessage);
+          res.sendStatus(200);
           return;
         }
 
@@ -129,9 +126,8 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          const conflictMessage = "Another meeting has been booked during this time in the same hall.";
-          await sendMessageToUser(phoneNumber, conflictMessage);
-          res.json({ error: conflictMessage });
+          await sendMessageToUser(phoneNumber, "Another meeting has been booked during this time in the same hall.");
+          res.json({ error: "Another meeting has been booked during this time in the same hall." });
           return;
         }
 
@@ -166,9 +162,7 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
-      const unrecognizedIntentMessage = "Intent not recognized";
-      await sendMessageToUser(phoneNumber, unrecognizedIntentMessage);
-      res.json({ error: unrecognizedIntentMessage });
+      res.json({ error: "Intent not recognized" });
 
     } catch (error) {
       console.error("Error processing webhook:", error);
