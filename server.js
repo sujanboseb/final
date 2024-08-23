@@ -44,12 +44,9 @@ async function generateMeetingId(collection) {
 }
 
 function parsePredictResponse(response) {
-  // If response is plain text, process it as such
   if (typeof response === 'string') {
     const result = {};
-    // Split by commas to separate key-value pairs
     const pairs = response.split(',').map(pair => pair.trim());
-    // Iterate over pairs to build the result object
     pairs.forEach(pair => {
       const [key, value] = pair.split(':').map(part => part.trim());
       if (key && value) {
@@ -58,10 +55,8 @@ function parsePredictResponse(response) {
     });
     return result;
   }
-  // Handle other response formats as needed
   return {};
 }
-
 
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
@@ -80,6 +75,23 @@ app.post("/webhook", async (req, res) => {
 
       if (intent === "meeting_booking") {
         const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
+
+        const missingFields = [];
+        if (!date) missingFields.push('date');
+        if (!hall_name) missingFields.push('hall_name');
+        if (!no_of_persons) missingFields.push('no_of_persons');
+        if (!starting_time) missingFields.push('starting_time');
+        if (!ending_time) missingFields.push('ending_time');
+        if (!reason) missingFields.push('reason');
+
+        if (missingFields.length > 0) {
+          if (missingFields.includes('reason')) {
+            res.json({ error: "You have been missing reason to enter. Please enter reasons like project discussion, client meeting, knowledge transfer, change in availability." });
+          } else {
+            res.json({ error: `The following fields are missing: ${missingFields.join(', ')}. Please start entering from the first onwards.` });
+          }
+          return;
+        }
 
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
@@ -114,7 +126,7 @@ app.post("/webhook", async (req, res) => {
         };
 
         await collection.insertOne(bookingData);
-        res.json({ success: `Meeting booked successfully with ID: ${meetingId}` });
+        res.json({ success: `Meeting has been booked successfully with Meeting ID: ${meetingId}` });
         return;
       } else if (intent === "meeting_booking_stats") {
         const bookings = await collection.find({
@@ -137,7 +149,6 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -152,8 +163,7 @@ app.get("/webhook", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send(`<pre>Nothing to see here.
-Checkout README.md to start.</pre>`);
+  res.send(`<pre>Nothing to see here. Checkout README.md to start.</pre>`);
 });
 
 app.listen(PORT, () => {
