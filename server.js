@@ -6,7 +6,7 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 const app = express();
 app.use(express.json());
 
-const { WEBHOOK_VERIFY_TOKEN, PORT } = process.env;
+const { WEBHOOK_VERIFY_TOKEN, PORT, WHATSAPP_API_TOKEN } = process.env;
 
 const mongoUri = `mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 const dbName = 'sujan';
@@ -58,9 +58,31 @@ function parsePredictResponse(response) {
   return {};
 }
 
+async function sendMessageToUser(phoneNumber, message) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v17.0/${process.env.PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: phoneNumber,
+        text: { body: message }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  } catch (error) {
+    console.error("Error sending message to user:", error);
+  }
+}
+
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
   const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
+  const phoneNumber = message?.from;
 
   if (message?.type === "text") {
     try {
@@ -71,7 +93,6 @@ app.post("/webhook", async (req, res) => {
 
       const collection = await connectToMongoDB();
       const intent = intentData.intent;
-      const phoneNumber = message.from;
 
       if (intent === "meeting_booking") {
         const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
@@ -85,11 +106,14 @@ app.post("/webhook", async (req, res) => {
         if (!reason) missingFields.push('reason');
 
         if (missingFields.length > 0) {
+          let errorMessage;
           if (missingFields.includes('reason')) {
-            res.json({ error: "You have been missing reason to enter. Please enter reasons like project discussion, client meeting, knowledge transfer, change in availability." });
+            errorMessage = "You have been missing reason to enter. Please enter reasons like project discussion, client meeting, knowledge transfer, change in availability.";
           } else {
-            res.json({ error: `The following fields are missing: ${missingFields.join(', ')}. Please start entering from the first onwards.` });
+            errorMessage = `The following fields are missing: ${missingFields.join(', ')}. Please start entering from the first onwards.`;
           }
+          await sendMessageToUser(phoneNumber, errorMessage);
+          res.json({ error: errorMessage });
           return;
         }
 
@@ -105,7 +129,9 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          res.json({ error: "Another meeting has been booked during this time in the same hall." });
+          const conflictMessage = "Another meeting has been booked during this time in the same hall.";
+          await sendMessageToUser(phoneNumber, conflictMessage);
+          res.json({ error: conflictMessage });
           return;
         }
 
@@ -126,7 +152,9 @@ app.post("/webhook", async (req, res) => {
         };
 
         await collection.insertOne(bookingData);
-        res.json({ success: `Meeting has been booked successfully with Meeting ID: ${meetingId}` });
+        const successMessage = `Meeting has been booked successfully with Meeting ID: ${meetingId}`;
+        await sendMessageToUser(phoneNumber, successMessage);
+        res.json({ success: successMessage });
         return;
       } else if (intent === "meeting_booking_stats") {
         const bookings = await collection.find({
@@ -138,7 +166,9 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
-      res.json({ error: "Intent not recognized" });
+      const unrecognizedIntentMessage = "Intent not recognized";
+      await sendMessageToUser(phoneNumber, unrecognizedIntentMessage);
+      res.json({ error: unrecognizedIntentMessage });
 
     } catch (error) {
       console.error("Error processing webhook:", error);
