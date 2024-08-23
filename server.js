@@ -119,15 +119,16 @@ app.post("/webhook", async (req, res) => {
           "data.date": date,
           "$or": [
             {
-              "data.strating_time": { "$lte": ending_time },
+              "data.starting_time": { "$lte": ending_time },
               "data.ending_time": { "$gte": starting_time }
             }
           ]
         }).toArray();
 
         if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, "Another meeting has been booked during this time in the same hall.");
-          res.json({ error: "Another meeting has been booked during this time in the same hall." });
+          const conflictMessage = "Another meeting has been booked during this time in the same hall. Try to choose a different hall or time.";
+          await sendMessageToUser(phoneNumber, conflictMessage);
+          res.json({ error: conflictMessage });
           return;
         }
 
@@ -140,7 +141,7 @@ app.post("/webhook", async (req, res) => {
             intent,
             hall_name,
             no_of_persons,
-            strating_time: starting_time,
+            starting_time,
             ending_time,
             employee: phoneNumber,
             booking_reason: reason
