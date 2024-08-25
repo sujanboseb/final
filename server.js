@@ -123,14 +123,16 @@ app.post("/webhook", async (req, res) => {
       const phoneNumber = message.from;
 
       if (intent === "meeting_booking") {
-        let { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
+        const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
 
-        // Rename meeting_date to date to match the expected variable name
-        const date = meeting_date;
+        const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
+        const providedEntities = Object.keys(intentData);
 
-        if (!date || !hall_name || !no_of_persons || !starting_time || !ending_time) {
+        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity));
+
+        if (!meeting_date || !hall_name || !no_of_persons || !starting_time || !ending_time) {
           const missingFields = [];
-          if (!date) missingFields.push("date");
+          if (!meeting_date) missingFields.push("meeting date");
           if (!hall_name) missingFields.push("hall name");
           if (!no_of_persons) missingFields.push("number of persons");
           if (!starting_time) missingFields.push("starting time");
@@ -142,23 +144,23 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
-        // If there are any extra entities, send an error message
-        if (Object.keys(extraEntities).length > 0) {
+        // If any extra entities are present, notify the user
+        if (extraEntitiesDetected.length > 0) {
           await sendMessageToUser(phoneNumber, "I can't book the meeting as you provided irrelevant information.");
           res.sendStatus(200);
           return;
         }
 
-        starting_time = convertToAmPm(starting_time);
-        ending_time = convertToAmPm(ending_time);
+        const formattedStartingTime = convertToAmPm(starting_time);
+        const formattedEndingTime = convertToAmPm(ending_time);
 
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
-          "data.date": date,
+          "data.meeting_date": meeting_date,
           "$or": [
             {
-              "data.starting_time": { "$lte": ending_time },
-              "data.ending_time": { "$gte": starting_time }
+              "data.starting_time": { "$lte": formattedEndingTime },
+              "data.ending_time": { "$gte": formattedStartingTime }
             }
           ]
         }).toArray();
@@ -174,12 +176,12 @@ app.post("/webhook", async (req, res) => {
         const bookingData = {
           _id: meetingId,
           data: {
-            date,
+            meeting_date,
             intent,
             hall_name,
             no_of_persons,
-            starting_time,
-            ending_time,
+            starting_time: formattedStartingTime,
+            ending_time: formattedEndingTime,
             employee: phoneNumber
           }
         };
@@ -209,6 +211,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
