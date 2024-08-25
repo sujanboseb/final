@@ -254,11 +254,16 @@ app.post("/webhook", async (req, res) => {
       } else if (intent === "meeting_cancelling") {
         const meetingId = intentData.meeting_id;
         if (meetingId.startsWith("meetingbooking:")) {
-          const result = await collection.deleteOne({ _id: meetingId });
-          if (result.deletedCount > 0) {
-            await sendMessageToUser(phoneNumber, "The hall booking has been cancelled successfully.");
-          } else {
-            await sendMessageToUser(phoneNumber, "No such meeting booking found to cancel.");
+          try {
+            const result = await collection.deleteOne({ _id: meetingId });
+            if (result.deletedCount > 0) {
+              await sendMessageToUser(phoneNumber, "The hall booking has been cancelled successfully.");
+            } else {
+              await sendMessageToUser(phoneNumber, "No such meeting booking found to cancel.");
+            }
+          } catch (error) {
+            console.error("Error canceling meeting:", error);
+            await sendMessageToUser(phoneNumber, "Error canceling the meeting. Please try again.");
           }
         } else {
           await sendMessageToUser(phoneNumber, "Invalid meeting ID format. Please check the meeting ID.");
@@ -266,7 +271,7 @@ app.post("/webhook", async (req, res) => {
         res.sendStatus(200);
         return;
 
-      } else if (intent === "hall_availalbility") {
+      } else if (intent === "hall_availability") {
         const { hall_name, meeting_date, starting_time, ending_time } = intentData;
         if (!hall_name || !meeting_date || (!starting_time && !ending_time)) {
           await sendMessageToUser(phoneNumber, "Please provide the hall name, meeting date, and either starting time or ending time to check availability.");
@@ -300,15 +305,16 @@ app.post("/webhook", async (req, res) => {
         const existingBookings = await collection.find(query).toArray();
 
         if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, `During that time, a meeting has been booked.`);
+          await sendMessageToUser(phoneNumber, "During that time, a meeting has been booked.");
         } else {
-          await sendMessageToUser(phoneNumber, `No meetings have been booked.`);
+          await sendMessageToUser(phoneNumber, "No meetings have been booked.");
         }
         res.sendStatus(200);
         return;
-      }
 
-      res.json({ error: "Intent not recognized" });
+      } else {
+        res.json({ error: "Intent not recognized" });
+      }
 
     } catch (error) {
       console.error("Error processing webhook:", error);
