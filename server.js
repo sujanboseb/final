@@ -161,9 +161,16 @@ app.post("/webhook", async (req, res) => {
         }
 
         if (parseInt(no_of_persons, 10) > hallDetails.room_capacity) {
+          // Find all halls that can accommodate the number of persons
           const availableHalls = await hallDetailsCollection.find({ room_capacity: { $gte: parseInt(no_of_persons, 10) } }).toArray();
           const availableHallNames = availableHalls.map(hall => hall.hall_name).join(", ");
-          await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people. Available halls that can accommodate your group are: ${availableHallNames}.`);
+
+          if (availableHallNames.length > 0) {
+            await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people. Available halls that can accommodate your group are: ${availableHallNames}.`);
+          } else {
+            await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people, and unfortunately, no other halls are available that can accommodate your group size.`);
+          }
+
           res.sendStatus(200);
           return;
         }
@@ -228,6 +235,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 
 
