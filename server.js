@@ -128,7 +128,14 @@ app.post("/webhook", async (req, res) => {
         const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
         const providedEntities = Object.keys(intentData);
 
-        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity));
+        // Check for extra entities
+        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
+
+        if (extraEntitiesDetected.length > 0) {
+          await sendMessageToUser(phoneNumber, "I can't book the meeting as you provided irrelevant information.");
+          res.sendStatus(200);
+          return;
+        }
 
         if (!meeting_date || !hall_name || !no_of_persons || !starting_time || !ending_time) {
           const missingFields = [];
@@ -140,13 +147,6 @@ app.post("/webhook", async (req, res) => {
 
           const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
           await sendMessageToUser(phoneNumber, missingMessage);
-          res.sendStatus(200);
-          return;
-        }
-
-        // If any extra entities are present, notify the user
-        if (extraEntitiesDetected.length > 0) {
-          await sendMessageToUser(phoneNumber, "I can't book the meeting as you provided irrelevant information.");
           res.sendStatus(200);
           return;
         }
