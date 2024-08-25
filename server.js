@@ -84,7 +84,7 @@ function isGreeting(message) {
 }
 
 function isInvalidMessage(message) {
-  const stopWords = ["a", "an", "the", "and", "but", "or"];
+  const stopWords = ["a", "an", "the", "and", "but", "or","stop","xxx"];
   const words = message.toLowerCase().split(/\W+/);
   return words.some(word => stopWords.includes(word)) && message.length < 5;
 }
@@ -113,7 +113,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     try {
-      const response = await axios.post('https://2b49-35-230-118-105.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://5731-34-125-194-71.ngrok-free.app/predict', { text: userMessage });
       const intentData = parsePredictResponse(response.data);
 
       console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
