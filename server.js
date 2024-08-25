@@ -253,17 +253,8 @@ app.post("/webhook", async (req, res) => {
 
         const meeting_id = match[0]; // Extract the meeting ID
 
-        if (!meeting_id.startsWith('meetingbooking:')) {
-          await sendMessageToUser(phoneNumber, "Invalid meeting ID format. Please check the meeting ID.");
-          res.sendStatus(200);
-          return;
-        }
-
-        // Extract the actual meeting ID by removing the prefix
-        const actualMeetingId = meeting_id.replace('meetingbooking:', '');
-
         // Check if the meeting ID exists
-        const meeting = await collection.findOne({ _id: actualMeetingId });
+        const meeting = await collection.findOne({ _id: meeting_id });
 
         if (!meeting) {
           await sendMessageToUser(phoneNumber, "No meeting found with the provided ID.");
@@ -272,7 +263,7 @@ app.post("/webhook", async (req, res) => {
         }
 
         // Delete the meeting
-        await collection.deleteOne({ _id: actualMeetingId });
+        await collection.deleteOne({ _id: meeting_id });
         await sendMessageToUser(phoneNumber, "Meeting booking has been cancelled.");
         res.sendStatus(200);
         return;
