@@ -113,7 +113,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     try {
-      const response = await axios.post('https://b9ba-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://b772-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
       const intentData = parsePredictResponse(response.data);
 
       // Check if the response contains any "Error"
