@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require("express");
 const axios = require("axios");
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const moment = require('moment');
 
 const app = express();
 app.use(express.json());
@@ -76,13 +77,43 @@ async function sendMessageToUser(phoneNumber, message) {
   }
 }
 
+function isGreeting(message) {
+  const greetings = ["hi", "hello", "namaskaram"];
+  const words = message.toLowerCase().split(/\W+/);
+  return greetings.some(greeting => words.includes(greeting)) && message.length < 5;
+}
+
+function isInvalidMessage(message) {
+  const stopWords = ["a", "an", "the", "and", "but", "or"];
+  const words = message.toLowerCase().split(/\W+/);
+  return words.some(word => stopWords.includes(word)) && message.length < 5;
+}
+
+function convertToAmPm(time) {
+  return moment(time, "HH:mm").format("hh:mm A");
+}
+
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
   const message = req.body.entry?.[0]?.changes[0]?.value?.messages?.[0];
 
   if (message?.type === "text") {
+    const userMessage = message.text.body;
+
+    if (isGreeting(userMessage)) {
+      await sendMessageToUser(message.from, "Hi, welcome to cab and hall management system");
+      res.sendStatus(200);
+      return;
+    }
+
+    if (isInvalidMessage(userMessage)) {
+      await sendMessageToUser(message.from, "You are entering stopwords and all; please enter relevant messages.");
+      res.sendStatus(200);
+      return;
+    }
+
     try {
-      const response = await axios.post('https://2b49-35-230-118-105.ngrok-free.app/predict', { text: message.text.body });
+      const response = await axios.post('https://2b49-35-230-118-105.ngrok-free.app/predict', { text: userMessage });
       const intentData = parsePredictResponse(response.data);
 
       console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
@@ -92,27 +123,24 @@ app.post("/webhook", async (req, res) => {
       const phoneNumber = message.from;
 
       if (intent === "meeting_booking") {
-        const { date, hall_name, no_of_persons, starting_time, ending_time, reason } = intentData;
+        let { date, hall_name, no_of_persons, starting_time, ending_time } = intentData;
 
-        if (!date || !hall_name || !no_of_persons || !starting_time || !ending_time || !reason) {
+        if (!date || !hall_name || !no_of_persons || !starting_time || !ending_time) {
           const missingFields = [];
           if (!date) missingFields.push("date");
           if (!hall_name) missingFields.push("hall name");
           if (!no_of_persons) missingFields.push("number of persons");
           if (!starting_time) missingFields.push("starting time");
           if (!ending_time) missingFields.push("ending time");
-          if (!reason) {
-            const reasonMessage = "You have been missing the reason. Please enter reasons like project discussion, client meeting, knowledge transfer, or change in availability.";
-            await sendMessageToUser(phoneNumber, reasonMessage);
-            res.sendStatus(200);
-            return;
-          }
 
           const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
           await sendMessageToUser(phoneNumber, missingMessage);
           res.sendStatus(200);
           return;
         }
+
+        starting_time = convertToAmPm(starting_time);
+        ending_time = convertToAmPm(ending_time);
 
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
@@ -126,9 +154,8 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          const conflictMessage = "Another meeting has been booked during this time in the same hall. Try to choose a different hall or time.";
-          await sendMessageToUser(phoneNumber, conflictMessage);
-          res.json({ error: conflictMessage });
+          await sendMessageToUser(phoneNumber, "Another meeting has been booked during this time in the same hall.");
+          res.json({ error: "Another meeting has been booked during this time in the same hall." });
           return;
         }
 
@@ -143,8 +170,7 @@ app.post("/webhook", async (req, res) => {
             no_of_persons,
             starting_time,
             ending_time,
-            employee: phoneNumber,
-            booking_reason: reason
+            employee: phoneNumber
           }
         };
 
