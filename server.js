@@ -113,12 +113,13 @@ app.post("/webhook", async (req, res) => {
     }
 
     try {
-      const response = await axios.post('https://75c7-35-231-56-146.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('"https://5dc1-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
       const intentData = parsePredictResponse(response.data);
 
       console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
 
       const collection = await connectToMongoDB();
+      const hallDetailsCollection = dbClient.db(dbName).collection("hall_details");
       const intent = intentData.intent;
       const phoneNumber = message.from;
 
@@ -151,6 +152,22 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Check hall capacity
+        const hallDetails = await hallDetailsCollection.findOne({ hall_name: hall_name });
+        if (!hallDetails) {
+          await sendMessageToUser(phoneNumber, `The hall ${hall_name} does not exist. Please choose a valid hall.`);
+          res.sendStatus(200);
+          return;
+        }
+
+        if (parseInt(no_of_persons, 10) > hallDetails.room_capacity) {
+          const availableHalls = await hallDetailsCollection.find({ room_capacity: { $gte: parseInt(no_of_persons, 10) } }).toArray();
+          const availableHallNames = availableHalls.map(hall => hall.hall_name).join(", ");
+          await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people. Available halls that can accommodate your group are: ${availableHallNames}.`);
+          res.sendStatus(200);
+          return;
+        }
+
         const formattedStartingTime = convertToAmPm(starting_time);
         const formattedEndingTime = convertToAmPm(ending_time);
 
@@ -166,7 +183,7 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, "Another meeting has been booked during this time in the same hall.");
+          await sendMessageToUser(phoneNumber, `Another meeting has been booked during this time in the ${hall_name}.`);
           res.json({ error: "Another meeting has been booked during this time in the same hall." });
           return;
         }
@@ -211,6 +228,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 
 app.get("/webhook", (req, res) => {
