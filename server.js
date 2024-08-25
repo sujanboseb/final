@@ -99,36 +99,41 @@ app.post("/webhook", async (req, res) => {
 
   if (message?.type === "text") {
     const userMessage = message.text.body;
+    const phoneNumber = message.from;
+
+    console.log("User message received:", userMessage);
 
     if (isGreeting(userMessage)) {
-      await sendMessageToUser(message.from, "Hi, welcome to cab and hall management system");
+      await sendMessageToUser(phoneNumber, "Hi, welcome to cab and hall management system");
       res.sendStatus(200);
       return;
     }
 
     if (isInvalidMessage(userMessage)) {
-      await sendMessageToUser(message.from, "You are entering stopwords and all; please enter relevant messages.");
+      await sendMessageToUser(phoneNumber, "You are entering stopwords and all; please enter relevant messages.");
       res.sendStatus(200);
       return;
     }
 
     try {
+      // Call the prediction service
       const response = await axios.post('https://3e9f-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
+      console.log("Response from prediction service:", response.data);
+
       const intentData = parsePredictResponse(response.data);
 
-      // Check if the response contains any "Error"
-      if (response.data.includes("Error")) {
-        await sendMessageToUser(message.from, `Error: ${response.data}`);
-        res.sendStatus(200);
-        return;
-      }
-
-      console.log("Parsed response from predict endpoint:", JSON.stringify(intentData, null, 2));
+      // Log the parsed intent data
+      console.log("Parsed response from prediction service:", JSON.stringify(intentData, null, 2));
 
       const collection = await connectToMongoDB();
       const hallDetailsCollection = dbClient.db(dbName).collection("hall_details");
       const intent = intentData.intent;
-      const phoneNumber = message.from;
+
+      if (!intent) {
+        await sendMessageToUser(phoneNumber, "Intent not recognized in prediction response.");
+        res.sendStatus(200);
+        return;
+      }
 
       if (intent === "meeting_booking") {
         const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
@@ -236,9 +241,19 @@ app.post("/webhook", async (req, res) => {
         return;
 
       } else if (intent === "meeting_cancelling") {
-        const { meeting_id } = intentData;
+        // Check if the user message contains a meeting ID
+        const meetingIdPattern = /meetingbooking:\d+/;
+        const match = userMessage.match(meetingIdPattern);
 
-        if (!meeting_id || !meeting_id.startsWith('meetingbooking:')) {
+        if (!match) {
+          await sendMessageToUser(phoneNumber, "Please provide a valid meeting ID in the format 'meetingbooking:<id>'.");
+          res.sendStatus(200);
+          return;
+        }
+
+        const meeting_id = match[0]; // Extract the meeting ID
+
+        if (!meeting_id.startsWith('meetingbooking:')) {
           await sendMessageToUser(phoneNumber, "Invalid meeting ID format. Please check the meeting ID.");
           res.sendStatus(200);
           return;
@@ -305,6 +320,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
