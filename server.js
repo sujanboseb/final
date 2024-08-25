@@ -161,7 +161,8 @@ app.post("/webhook", async (req, res) => {
 
         // Compare meeting date with today's date
         const today = new Date();
-        const meetingDate = new Date(meeting_date.split('-').reverse().join('-')); // Adjusting the date format
+        const [day, month, year] = meeting_date.split('-').map(num => parseInt(num, 10));
+        const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
 
         if (meetingDate < today) {
           await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
