@@ -84,7 +84,7 @@ function isGreeting(message) {
 }
 
 function isInvalidMessage(message) {
-  const stopWords = ["a", "an", "the", "and", "but", "or","stop","xxx"];
+  const stopWords = ["a", "an", "the", "and", "but", "or", "stop", "xxx"];
   const words = message.toLowerCase().split(/\W+/);
   return words.some(word => stopWords.includes(word)) && message.length < 5;
 }
@@ -113,7 +113,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     try {
-      const response = await axios.post('https://b772-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://3e9f-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
       const intentData = parsePredictResponse(response.data);
 
       // Check if the response contains any "Error"
@@ -244,8 +244,11 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Extract the actual meeting ID by removing the prefix
+        const actualMeetingId = meeting_id.replace('meetingbooking:', '');
+
         // Check if the meeting ID exists
-        const meeting = await collection.findOne({ _id: meeting_id });
+        const meeting = await collection.findOne({ _id: actualMeetingId });
 
         if (!meeting) {
           await sendMessageToUser(phoneNumber, "No meeting found with the provided ID.");
@@ -254,8 +257,8 @@ app.post("/webhook", async (req, res) => {
         }
 
         // Delete the meeting
-        await collection.deleteOne({ _id: meeting_id });
-        await sendMessageToUser(phoneNumber, "Hall booking has been cancelled.");
+        await collection.deleteOne({ _id: actualMeetingId });
+        await sendMessageToUser(phoneNumber, "Meeting booking has been cancelled.");
         res.sendStatus(200);
         return;
 
@@ -302,13 +305,6 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
-
-
-
-
-
-
-
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
