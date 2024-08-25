@@ -161,7 +161,7 @@ app.post("/webhook", async (req, res) => {
 
         // Compare meeting date with today's date
         const today = new Date();
-        const [day, month, year] = meeting_date.split('-').map(num => parseInt(num, 10));
+        const [day, month, year] = meeting_date.split('/').map(num => parseInt(num, 10));
         const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
 
         if (meetingDate < today) {
@@ -196,6 +196,7 @@ app.post("/webhook", async (req, res) => {
         const formattedStartingTime = convertToAmPm(starting_time);
         const formattedEndingTime = convertToAmPm(ending_time);
 
+        // Check for existing bookings
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
           "data.meeting_date": meeting_date,
@@ -213,7 +214,8 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
-        const meetingId = await generateMeetingId(collection);
+        // Generate unique meeting ID
+        const meetingId = await generateUniqueMeetingId(collection);
 
         const bookingData = {
           _id: meetingId,
@@ -228,10 +230,16 @@ app.post("/webhook", async (req, res) => {
           }
         };
 
-        await collection.insertOne(bookingData);
-        const successMessage = `Meeting has been booked successfully with Meeting ID: ${meetingId}`;
-        await sendMessageToUser(phoneNumber, successMessage);
-        res.json({ success: successMessage });
+        try {
+          await collection.insertOne(bookingData);
+          const successMessage = `Meeting has been booked successfully with Meeting ID: ${meetingId}`;
+          await sendMessageToUser(phoneNumber, successMessage);
+          res.json({ success: successMessage });
+        } catch (insertError) {
+          console.error("Error inserting document:", insertError);
+          await sendMessageToUser(phoneNumber, "Error booking the meeting. Please try again.");
+          res.sendStatus(500);
+        }
         return;
 
       } else if (intent === "meeting_booking_stats") {
@@ -289,20 +297,18 @@ app.post("/webhook", async (req, res) => {
           query["data.ending_time"] = { "$gte": formattedEndingTime };
         }
 
-        const bookings = await collection.find(query).toArray();
+        const existingBookings = await collection.find(query).toArray();
 
-        if (bookings.length > 0) {
-          await sendMessageToUser(phoneNumber, "During that time, a meeting has already been booked.");
+        if (existingBookings.length > 0) {
+          await sendMessageToUser(phoneNumber, `During that time, a meeting has been booked.`);
         } else {
-          await sendMessageToUser(phoneNumber, "No meetings have been booked during that time.");
+          await sendMessageToUser(phoneNumber, `No meetings have been booked.`);
         }
         res.sendStatus(200);
         return;
-
-      } else {
-        res.json({ error: "Intent not recognized" });
-        return;
       }
+
+      res.json({ error: "Intent not recognized" });
 
     } catch (error) {
       console.error("Error processing webhook:", error);
@@ -312,6 +318,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
+
 
 
 
