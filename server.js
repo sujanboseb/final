@@ -425,6 +425,24 @@ app.post("/webhook", async (req, res) => {
           res.sendStatus(200);
           return;
 
+        } else if (intent === "meeting_booking_stats") {
+          // Handle meeting booking stats
+          const bookings = await collection.find({ "data.employee": phoneNumber }).toArray();
+
+          if (bookings.length === 0) {
+            await sendMessageToUser(phoneNumber, "You have no upcoming meetings.");
+          } else {
+            const meetingDetails = bookings.map(booking => {
+              const { meeting_date, hall_name, no_of_persons, starting_time, ending_time } = booking.data;
+              return `Meeting on ${meeting_date} at ${hall_name}, starting at ${starting_time} and ending at ${ending_time} for ${no_of_persons} persons.`;
+            }).join("\n\n");
+
+            const summaryMessage = `Here are your upcoming meetings:\n\n${meetingDetails}`;
+            await sendMessageToUser(phoneNumber, summaryMessage);
+          }
+          res.sendStatus(200);
+          return;
+
         } else {
           await sendMessageToUser(phoneNumber, "Sorry, I didn't understand your request.");
           res.sendStatus(200);
