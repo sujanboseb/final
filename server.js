@@ -400,8 +400,6 @@ app.post("/webhook", async (req, res) => {
           return;
 
         } else if (intent === "cab_cancelling") {
-          const cabBookingCollection = dbClient.db(dbName).collection("cab_booking"); // Reference the collection for cab cancelling
-
           const cabIdMatch = userMessage.match(/cabbooking:(\d+)/);
 
           if (!cabIdMatch) {
