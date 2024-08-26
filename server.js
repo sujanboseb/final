@@ -89,28 +89,33 @@ function isInvalidMessage(message) {
   return words.some(word => stopWords.includes(word)) && message.length < 5;
 }
 
+function extractTimes(text) {
+  const timePattern = /(\b\d{1,2}[:.]\d{2}\s*(?:AM|PM)?\b|\b\d{1,2}\s*(?:AM|PM)\b)/gi;
+  const times = text.match(timePattern) || [];
+  return times.map(time => time.trim());
+}
+
 function convertToAmPm(time) {
-    const timeMatch = time.match(/(\d{1,2})(?::(\d{2}))?\s*([aApP][mM])?/);
-    if (!timeMatch) {
-        throw new Error(`Invalid time format: ${time}`);
+  const timeMatch = time.match(/(\d{1,2})(?::(\d{2}))?\s*([aApP][mM])?/);
+  if (!timeMatch) {
+    throw new Error(`Invalid time format: ${time}`);
+  }
+
+  let [ , hours, minutes = "00", period ] = timeMatch;
+  hours = parseInt(hours, 10);
+
+  if (period) {
+    period = period.toLowerCase();
+    if (period === 'pm' && hours < 12) {
+      hours += 12;
+    } else if (period === 'am' && hours === 12) {
+      hours = 0;
     }
+  } else if (hours === 12) {
+    hours = 0;
+  }
 
-    let [ , hours, minutes = "00", period ] = timeMatch;
-    hours = parseInt(hours, 10);
-
-    // Convert hours based on period
-    if (period) {
-        period = period.toLowerCase();
-        if (period === 'pm' && hours < 12) {
-            hours += 12;
-        } else if (period === 'am' && hours === 12) {
-            hours = 0;
-        }
-    } else if (hours === 12) {
-        hours = 0; // Handle 12:xx without AM/PM
-    }
-
-    return `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+  return `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
 }
 
 
@@ -139,7 +144,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Call the prediction service
-      const response = await axios.post('https://a9df-23-236-61-55.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://3298-23-236-61-55.ngrok-free.app/predict', { text: userMessage });
       console.log("Response from prediction service:", response.data);
 
       const intentData = parsePredictResponse(response.data);
@@ -159,109 +164,114 @@ app.post("/webhook", async (req, res) => {
 
       // Handle meeting booking intent
       if (intent === "meeting_booking") {
-        const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
+          const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
 
-        const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
-        const providedEntities = Object.keys(intentData);
+          const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
+          const providedEntities = Object.keys(intentData);
 
-        // Check for extra entities
-        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
+          // Check for extra entities
+          const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
 
-        if (extraEntitiesDetected.length > 0) {
-          await sendMessageToUser(phoneNumber, "I can't book the meeting as you provided irrelevant information.");
-          res.sendStatus(200);
-          return;
-        }
-
-        if (!meeting_date || !hall_name || !no_of_persons || !starting_time || !ending_time) {
-          const missingFields = [];
-          if (!meeting_date) missingFields.push("meeting date");
-          if (!hall_name) missingFields.push("hall name");
-          if (!no_of_persons) missingFields.push("number of persons");
-          if (!starting_time) missingFields.push("starting time");
-          if (!ending_time) missingFields.push("ending time");
-
-          const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
-          await sendMessageToUser(phoneNumber, missingMessage);
-          res.sendStatus(200);
-          return;
-        }
-
-        // Compare meeting date with today's date
-        const today = new Date();
-        const [day, month, year] = meeting_date.split('/').map(num => parseInt(num, 10));
-        const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
-
-        if (meetingDate < today) {
-          await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
-          res.sendStatus(200);
-          return;
-        }
-
-        // Check hall capacity
-        const hallDetails = await hallDetailsCollection.findOne({ hall_name: hall_name });
-        if (!hallDetails) {
-          await sendMessageToUser(phoneNumber, `The hall ${hall_name} does not exist. Please choose a valid hall.`);
-          res.sendStatus(200);
-          return;
-        }
-
-        if (parseInt(no_of_persons, 10) > hallDetails.room_capacity) {
-          // Find all halls that can accommodate the number of persons
-          const availableHalls = await hallDetailsCollection.find({ room_capacity: { $gte: parseInt(no_of_persons, 10) } }).toArray();
-          const availableHallNames = availableHalls.map(hall => hall.hall_name).join(", ");
-
-          if (availableHallNames.length > 0) {
-            await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people. Available halls that can accommodate your group are: ${availableHallNames}.`);
-          } else {
-            await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} people, and unfortunately, no other halls are available that can accommodate your group size.`);
+          if (extraEntitiesDetected.length > 0) {
+            await sendMessageToUser(phoneNumber, "I can't book the meeting as you provided irrelevant information.");
+            res.sendStatus(200);
+            return;
           }
 
-          res.sendStatus(200);
-          return;
-        }
+          if (!meeting_date || !hall_name || !no_of_persons) {
+            const missingFields = [];
+            if (!meeting_date) missingFields.push("meeting date");
+            if (!hall_name) missingFields.push("hall name");
+            if (!no_of_persons) missingFields.push("number of persons");
 
-        const formattedStartingTime = convertToAmPm(starting_time);
-        const formattedEndingTime = convertToAmPm(ending_time);
+            const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
+            await sendMessageToUser(phoneNumber, missingMessage);
+            res.sendStatus(200);
+            return;
+          }
 
-        // Check for existing bookings
-        const existingBookings = await collection.find({
-          "data.hall_name": hall_name,
-          "data.meeting_date": meeting_date,
-          "$or": [
-            {
-              "data.starting_time": { "$lte": formattedEndingTime },
-              "data.ending_time": { "$gte": formattedStartingTime }
+          // Extract times from the user message if not provided
+          const extractedTimes = extractTimes(userMessage);
+          if (extractedTimes.length === 2) {
+            starting_time = convertToAmPm(extractedTimes[0]);
+            ending_time = convertToAmPm(extractedTimes[1]);
+          } else if (!starting_time || !ending_time) {
+            await sendMessageToUser(phoneNumber, "Please provide both starting and ending times in your message.");
+            res.sendStatus(200);
+            return;
+          } else {
+            starting_time = convertToAmPm(starting_time);
+            ending_time = convertToAmPm(ending_time);
+          }
+
+          // Compare meeting date with today's date
+          const today = new Date();
+          const [day, month, year] = meeting_date.split('/').map(num => parseInt(num, 10));
+          const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
+
+          if (meetingDate < today) {
+            await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
+            res.sendStatus(200);
+            return;
+          }
+
+          // Check hall capacity
+          const hallDetails = await hallDetailsCollection.findOne({ hall_name: hall_name });
+          if (!hallDetails) {
+            await sendMessageToUser(phoneNumber, `The hall ${hall_name} does not exist. Please choose a valid hall.`);
+            res.sendStatus(200);
+            return;
+          }
+
+          if (parseInt(no_of_persons, 10) > hallDetails.room_capacity) {
+            // Find all halls that can accommodate the number of persons
+            const availableHalls = await hallDetailsCollection.find({ room_capacity: { $gte: parseInt(no_of_persons, 10) } }).toArray();
+            if (availableHalls.length === 0) {
+              await sendMessageToUser(phoneNumber, `No halls available that can accommodate ${no_of_persons} persons.`);
+              res.sendStatus(200);
+              return;
             }
-          ]
-        }).toArray();
+            await sendMessageToUser(phoneNumber, `The hall ${hall_name} cannot accommodate ${no_of_persons} persons. Here are some available halls: ${availableHalls.map(hall => hall.hall_name).join(", ")}.`);
+            res.sendStatus(200);
+            return;
+          }
 
-        if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, `Another meeting has been booked during this time in the ${hall_name}.`);
-          res.json({ error: "Another meeting has been booked during this time in the same hall." });
-          return;
-        }
+          // Check for existing bookings
+          const formattedStartingTime = moment(starting_time, "HH:mm").toDate();
+          const formattedEndingTime = moment(ending_time, "HH:mm").toDate();
 
-        const meetingId = await generateMeetingId(collection);
+          const existingBookings = await collection.find({
+            $or: [
+              {
+                "data.starting_time": { $lt: formattedEndingTime },
+                "data.ending_time": { $gt: formattedStartingTime }
+              },
+              {
+                "data.starting_time": { $lt: formattedStartingTime },
+                "data.ending_time": { $gt: formattedStartingTime }
+              }
+            ]
+          }).toArray();
 
-        const bookingData = {
-          _id: meetingId,
-          data: {
+          if (existingBookings.length > 0) {
+            await sendMessageToUser(phoneNumber, `The hall ${hall_name} is already booked for the selected time slot on ${meeting_date}. Please select another time.`);
+            res.sendStatus(200);
+            return;
+          }
+
+          const meetingId = await generateMeetingId(collection);
+          const bookingDetails = {
+            _id: meetingId,
             meeting_date,
-            intent,
             hall_name,
             no_of_persons,
             starting_time: formattedStartingTime,
-            ending_time: formattedEndingTime,
-            employee: phoneNumber
-          }
-        };
+            ending_time: formattedEndingTime
+          };
 
-        await collection.insertOne(bookingData);
-        const successMessage = `Meeting has been booked successfully with Meeting ID: ${meetingId}`;
-        await sendMessageToUser(phoneNumber, successMessage);
-        res.json({ success: successMessage });
-        return;
+          await collection.insertOne({ data: bookingDetails });
+          await sendMessageToUser(phoneNumber, `Meeting booked successfully with ID ${meetingId} on ${meeting_date} at ${hall_name} from ${starting_time} to ${ending_time}.`);
+        } 
 
       } else if (intent === "meeting_cancelling") {
         const meetingIdMatch = userMessage.match(/meetingbooking:(\d+)/);
