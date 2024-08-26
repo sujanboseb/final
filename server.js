@@ -39,8 +39,8 @@ async function connectToMongoDB() {
 }
 
 async function generateMeetingId(collection) {
-  const lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
-  const lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
+  let lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
+  let lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
   let newId;
   let isDuplicate;
 
@@ -52,6 +52,7 @@ async function generateMeetingId(collection) {
 
   return newId;
 }
+
 
 function parsePredictResponse(response) {
   if (typeof response === 'string') {
