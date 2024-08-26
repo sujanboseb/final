@@ -387,7 +387,7 @@ app.post("/webhook", async (req, res) => {
         return;
 
       } else if (intent === "cab_cancelling") {
-        const cabBookingIdMatch = userMessage.match(/cab_booking:(\d+)/);
+        const cabBookingIdMatch = userMessage.match(/cabbooking:(\d+)/);
 
         if (!cabBookingIdMatch) {
           await sendMessageToUser(phoneNumber, "Please provide a valid cab booking ID in the format 'cab_booking:X' where X is the cab booking number.");
