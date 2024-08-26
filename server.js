@@ -90,17 +90,26 @@ function isInvalidMessage(message) {
 }
 
 function convertToAmPm(time) {
-    const [timePart, period] = time.match(/(\d+)([aApP][mM])/).slice(1);
-    let hours = parseInt(timePart, 10);
-
-    if (period.toLowerCase() === 'pm' && hours < 12) {
-        hours += 12;
-    } else if (period.toLowerCase() === 'am' && hours === 12) {
-        hours = 0;
+   const timeMatch = time.match(/(\d{1,2}):?(\d{2})?\s*([aApP][mM])?/);
+    if (!timeMatch) {
+        throw new Error(`Invalid time format: ${time}`);
     }
 
-    return `${hours.toString().padStart(2, '0')}:00`;
+    let [ , hours, minutes = "00", period ] = timeMatch;
+    hours = parseInt(hours, 10);
+
+    if (period) {
+        period = period.toLowerCase();
+        if (period === 'pm' && hours < 12) {
+            hours += 12;
+        } else if (period === 'am' && hours === 12) {
+            hours = 0;
+        }
+    }
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
 }
+
 
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
