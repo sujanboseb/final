@@ -117,7 +117,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Call the prediction service
-      const response = await axios.post('https://3e9f-34-127-8-66.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://7510-34-150-149-49.ngrok-free.app/predict', { text: userMessage });
       console.log("Response from prediction service:", response.data);
 
       const intentData = parsePredictResponse(response.data);
@@ -135,6 +135,7 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
+      // Handle meeting booking intent
       if (intent === "meeting_booking") {
         const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
 
@@ -241,17 +242,16 @@ app.post("/webhook", async (req, res) => {
         return;
 
       } else if (intent === "meeting_cancelling") {
-        // Check if the user message contains a meeting ID
-        const meetingIdPattern = /meetingbooking:\d+/;
-        const match = userMessage.match(meetingIdPattern);
+        const { meeting_id } = intentData;
 
-        if (!match) {
-          await sendMessageToUser(phoneNumber, "Please provide a valid meeting ID in the format 'meetingbooking:<id>'.");
+        if (!meeting_id || !meeting_id.startsWith('meetingbooking:')) {
+          await sendMessageToUser(phoneNumber, "Invalid meeting ID format. Please check the meeting ID.");
           res.sendStatus(200);
           return;
         }
 
-        const meeting_id = match[0]; // Extract the meeting ID
+        // Extract the actual meeting ID by removing the prefix
+        const actualMeetingId = meeting_id.replace('meetingbooking:', '');
 
         // Check if the meeting ID exists
         const meeting = await collection.findOne({ _id: meeting_id });
@@ -271,15 +271,32 @@ app.post("/webhook", async (req, res) => {
       } else if (intent === "hall_availability") {
         const { hall_name, meeting_date, starting_time, ending_time } = intentData;
 
-        if (!hall_name || !meeting_date) {
-          await sendMessageToUser(phoneNumber, "Please provide both hall name and meeting date.");
+        // Check for required entities and ensure no extra entities
+        const expectedEntities = ["hall_name", "meeting_date", "starting_time", "ending_time"];
+        const providedEntities = Object.keys(intentData);
+
+        // Check if all required entities are present
+        const missingFields = expectedEntities.filter(entity => !providedEntities.includes(entity));
+        if (missingFields.length > 0) {
+          const missingMessage = `Please provide the following missing information: ${missingFields.join(", ")}.`;
+          await sendMessageToUser(phoneNumber, missingMessage);
           res.sendStatus(200);
           return;
         }
 
+        // Check for extra entities
+        const extraEntities = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
+        if (extraEntities.length > 0) {
+          await sendMessageToUser(phoneNumber, "Please enter only the required entities: hall_name, meeting_date, starting_time, and ending_time.");
+          res.sendStatus(200);
+          return;
+        }
+
+        // Format times to AM/PM format if necessary
         const formattedStartingTime = convertToAmPm(starting_time);
         const formattedEndingTime = convertToAmPm(ending_time);
 
+        // Check for existing bookings
         const existingBookings = await collection.find({
           "data.hall_name": hall_name,
           "data.meeting_date": meeting_date,
@@ -292,9 +309,9 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, `During that time, meetings have been booked in the ${hall_name}.`);
+          await sendMessageToUser(phoneNumber, "Sorry, during that time a meeting has already been booked in the hall.");
         } else {
-          await sendMessageToUser(phoneNumber, `No meetings have been booked in the ${hall_name} during that time.`);
+          await sendMessageToUser(phoneNumber, "During that time, the hall is free.");
         }
 
         res.sendStatus(200);
