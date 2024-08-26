@@ -242,32 +242,30 @@ app.post("/webhook", async (req, res) => {
         return;
 
       } else if (intent === "meeting_cancelling") {
-        const { meeting_id } = intentData;
+        const meetingIdMatch = userMessage.match(/meetingbooking:(\d+)/);
 
-        if (!meeting_id || !meeting_id.startsWith('meetingbooking:')) {
-          await sendMessageToUser(phoneNumber, "Invalid meeting ID format. Please check the meeting ID.");
+        if (!meetingIdMatch) {
+          await sendMessageToUser(phoneNumber, "Please provide a valid meeting ID in the format 'meetingbooking:X' where X is the meeting number.");
           res.sendStatus(200);
           return;
         }
 
-        // Extract the actual meeting ID by removing the prefix
-        const actualMeetingId = meeting_id.replace('meetingbooking:', '');
+        const meetingId = meetingIdMatch[0];
 
         // Check if the meeting ID exists
-        const meeting = await collection.findOne({ _id: meeting_id });
+        const meeting = await collection.findOne({ _id: meetingId });
 
         if (!meeting) {
-          await sendMessageToUser(phoneNumber, "No meeting found with the provided ID.");
+          await sendMessageToUser(phoneNumber, "You have entered the wrong meeting ID.");
           res.sendStatus(200);
           return;
         }
 
         // Delete the meeting
-        await collection.deleteOne({ _id: meeting_id });
-        await sendMessageToUser(phoneNumber, "Meeting booking has been cancelled.");
+        await collection.deleteOne({ _id: meetingId });
+        await sendMessageToUser(phoneNumber, "Meeting has been successfully removed.");
         res.sendStatus(200);
         return;
-
       } else if (intent === "hall_availability") {
         const { hall_name, meeting_date, starting_time, ending_time } = intentData;
 
@@ -328,7 +326,6 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
-
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
