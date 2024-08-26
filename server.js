@@ -11,12 +11,12 @@ const { WEBHOOK_VERIFY_TOKEN, PORT, WHATSAPP_API_TOKEN } = process.env;
 
 const mongoUri = `mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 const dbName = 'sujan';
-const meetingBookingCollectionName = 'meeting booking';
-const cabBookingCollectionName = 'cab booking';
+const meetingCollectionName = 'meeting_booking';
+const cabCollectionName = 'cab_booking';
 
 let dbClient;
-let meetingBookingCollection;
-let cabBookingCollection;
+let meetingCollection;
+let cabCollection;
 
 async function connectToMongoDB() {
   if (!dbClient) {
@@ -31,20 +31,26 @@ async function connectToMongoDB() {
     try {
       await dbClient.connect();
       console.log("Connected to MongoDB");
-      meetingBookingCollection = dbClient.db(dbName).collection(meetingBookingCollectionName);
-      cabBookingCollection = dbClient.db(dbName).collection(cabBookingCollectionName);
+      meetingCollection = dbClient.db(dbName).collection(meetingCollectionName);
+      cabCollection = dbClient.db(dbName).collection(cabCollectionName);
     } catch (error) {
       console.error("Error connecting to MongoDB:", error);
       throw error;
     }
   }
-  return { meetingBookingCollection, cabBookingCollection };
+  return { meetingCollection, cabCollection };
 }
 
-async function generateBookingId(collection, prefix) {
+async function generateMeetingId(collection) {
   const lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
   const lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
-  return `${prefix}:${lastId + 1}`;
+  return `meetingbooking:${lastId + 1}`;
+}
+
+async function generateCabId(collection) {
+  const lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
+  const lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
+  return `cabbooking:${lastId + 1}`;
 }
 
 function parsePredictResponse(response) {
@@ -119,14 +125,16 @@ app.post("/webhook", async (req, res) => {
     }
 
     try {
-      const response = await axios.post('https://7b12-34-85-175-167.ngrok-free.app/predict', { text: userMessage });
+      // Call the prediction service
+      const response = await axios.post('https://21cb-34-85-175-167.ngrok-free.app/predict', { text: userMessage });
       console.log("Response from prediction service:", response.data);
 
       const intentData = parsePredictResponse(response.data);
 
+      // Log the parsed intent data
       console.log("Parsed response from prediction service:", JSON.stringify(intentData, null, 2));
 
-      const { meetingBookingCollection, cabBookingCollection } = await connectToMongoDB();
+      const { meetingCollection, cabCollection } = await connectToMongoDB();
       const hallDetailsCollection = dbClient.db(dbName).collection("hall_details");
       const intent = intentData.intent;
 
@@ -136,12 +144,14 @@ app.post("/webhook", async (req, res) => {
         return;
       }
 
+      // Handle meeting booking intent
       if (intent === "meeting_booking") {
         const { meeting_date, hall_name, no_of_persons, starting_time, ending_time, ...extraEntities } = intentData;
 
         const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
         const providedEntities = Object.keys(intentData);
 
+        // Check for extra entities
         const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
 
         if (extraEntitiesDetected.length > 0) {
@@ -164,9 +174,10 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Compare meeting date with today's date
         const today = new Date();
         const [day, month, year] = meeting_date.split('/').map(num => parseInt(num, 10));
-        const meetingDate = new Date(year, month - 1, day);
+        const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
 
         if (meetingDate < today) {
           await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
@@ -174,6 +185,7 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Check hall capacity
         const hallDetails = await hallDetailsCollection.findOne({ hall_name: hall_name });
         if (!hallDetails) {
           await sendMessageToUser(phoneNumber, `The hall ${hall_name} does not exist. Please choose a valid hall.`);
@@ -182,6 +194,7 @@ app.post("/webhook", async (req, res) => {
         }
 
         if (parseInt(no_of_persons, 10) > hallDetails.room_capacity) {
+          // Find all halls that can accommodate the number of persons
           const availableHalls = await hallDetailsCollection.find({ room_capacity: { $gte: parseInt(no_of_persons, 10) } }).toArray();
           const availableHallNames = availableHalls.map(hall => hall.hall_name).join(", ");
 
@@ -198,7 +211,8 @@ app.post("/webhook", async (req, res) => {
         const formattedStartingTime = convertToAmPm(starting_time);
         const formattedEndingTime = convertToAmPm(ending_time);
 
-        const existingBookings = await meetingBookingCollection.find({
+        // Check for existing bookings
+        const existingBookings = await meetingCollection.find({
           "data.hall_name": hall_name,
           "data.meeting_date": meeting_date,
           "$or": [
@@ -211,80 +225,115 @@ app.post("/webhook", async (req, res) => {
 
         if (existingBookings.length > 0) {
           await sendMessageToUser(phoneNumber, `Another meeting has been booked during this time in the ${hall_name}.`);
-          res.json({ error: "Another meeting has been booked during this time in the same hall." });
+          res.json({ error: "Another meeting has been booked during this time in the hall." });
           return;
         }
 
-        const meetingId = await generateBookingId(meetingBookingCollection, 'meetingbooking');
-
-        const bookingData = {
+        // Insert new meeting
+        const meetingId = await generateMeetingId(meetingCollection);
+        const meetingData = {
           _id: meetingId,
           data: {
             meeting_date,
-            intent: "meeting_booking",
             hall_name,
             no_of_persons,
             starting_time: formattedStartingTime,
-            ending_time: formattedEndingTime,
-            employee: phoneNumber
+            ending_time: formattedEndingTime
           }
         };
 
-        await meetingBookingCollection.insertOne(bookingData);
-        await sendMessageToUser(phoneNumber, `Your meeting has been booked successfully with ID ${meetingId}.`);
+        await meetingCollection.insertOne(meetingData);
+        await sendMessageToUser(phoneNumber, `Meeting booked successfully. Your meeting ID is ${meetingId}.`);
+        res.sendStatus(200);
+        return;
       }
 
+      // Handle meeting cancelling intent
       if (intent === "meeting_cancelling") {
-        const { hall_name, meeting_date, ...extraEntities } = intentData;
+        const { meeting_id } = intentData;
 
-        const expectedEntities = ["hall_name", "meeting_date"];
-        const providedEntities = Object.keys(intentData);
-
-        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
-
-        if (extraEntitiesDetected.length > 0) {
-          await sendMessageToUser(phoneNumber, "I can't cancel the meeting as you provided irrelevant information.");
+        if (!meeting_id || !meeting_id.startsWith("meetingbooking:")) {
+          await sendMessageToUser(phoneNumber, "Invalid meeting booking ID format. Please provide the ID in the format meetingbooking:x.");
           res.sendStatus(200);
           return;
         }
 
-        const existingBooking = await meetingBookingCollection.findOne({
-          "data.meeting_date": meeting_date,
-          "data.hall_name": hall_name,
-          "data.employee": phoneNumber
-        });
+        const result = await meetingCollection.deleteOne({ _id: meeting_id });
 
-        if (!existingBooking) {
-          await sendMessageToUser(phoneNumber, "There is no meeting on the specified date with the specified details.");
-          res.sendStatus(200);
-          return;
+        if (result.deletedCount === 0) {
+          await sendMessageToUser(phoneNumber, `No meeting found with the provided ID ${meeting_id}.`);
+        } else {
+          await sendMessageToUser(phoneNumber, "Your meeting has been cancelled successfully.");
         }
 
-        await meetingBookingCollection.deleteOne({ _id: existingBooking._id });
-        await sendMessageToUser(phoneNumber, "Your meeting has been cancelled successfully.");
+        res.sendStatus(200);
+        return;
       }
 
-      if (intent === "cab_booking") {
-        const { pickup_location, drop_location, cab_type, booking_date, pickup_time, ...extraEntities } = intentData;
+      // Handle hall availability intent
+      if (intent === "hall_availability") {
+        const { hall_name, meeting_date, starting_time, ending_time } = intentData;
 
-        const expectedEntities = ["pickup_location", "drop_location", "cab_type", "booking_date", "pickup_time"];
-        const providedEntities = Object.keys(intentData);
+        if (!hall_name || !meeting_date || !starting_time || !ending_time) {
+          const missingFields = [];
+          if (!hall_name) missingFields.push("hall_name");
+          if (!meeting_date) missingFields.push("meeting_date");
+          if (!starting_time) missingFields.push("starting_time");
+          if (!ending_time) missingFields.push("ending_time");
 
-        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
-
-        if (extraEntitiesDetected.length > 0) {
-          await sendMessageToUser(phoneNumber, "I can't book the cab as you provided irrelevant information.");
+          const missingMessage = `Please provide the following missing information: ${missingFields.join(", ")}.`;
+          await sendMessageToUser(phoneNumber, missingMessage);
           res.sendStatus(200);
           return;
         }
 
-        if (!pickup_location || !drop_location || !cab_type || !booking_date || !pickup_time) {
+        if (Object.keys(intentData).length > 4) {
+          await sendMessageToUser(phoneNumber, "Please enter only the required entities: hall_name, meeting_date, starting_time, ending_time.");
+          res.sendStatus(200);
+          return;
+        }
+
+        const hallDetails = await hallDetailsCollection.findOne({ hall_name: hall_name });
+
+        if (!hallDetails) {
+          await sendMessageToUser(phoneNumber, `The hall ${hall_name} does not exist.`);
+          res.sendStatus(200);
+          return;
+        }
+
+        const formattedStartingTime = convertToAmPm(starting_time);
+        const formattedEndingTime = convertToAmPm(ending_time);
+
+        const existingBookings = await meetingCollection.find({
+          "data.hall_name": hall_name,
+          "data.meeting_date": meeting_date,
+          "$or": [
+            {
+              "data.starting_time": { "$lte": formattedEndingTime },
+              "data.ending_time": { "$gte": formattedStartingTime }
+            }
+          ]
+        }).toArray();
+
+        if (existingBookings.length > 0) {
+          await sendMessageToUser(phoneNumber, `Sorry, during that time a meeting has already been booked in the hall ${hall_name}.`);
+        } else {
+          await sendMessageToUser(phoneNumber, `During that time, the hall ${hall_name} is free.`);
+        }
+
+        res.sendStatus(200);
+        return;
+      }
+
+      // Handle cab booking intent
+      if (intent === "cab_booking") {
+        const { meeting_date, batch_no, cab_name } = intentData;
+
+        if (!meeting_date || !batch_no || !cab_name) {
           const missingFields = [];
-          if (!pickup_location) missingFields.push("pickup location");
-          if (!drop_location) missingFields.push("drop location");
-          if (!cab_type) missingFields.push("cab type");
-          if (!booking_date) missingFields.push("booking date");
-          if (!pickup_time) missingFields.push("pickup time");
+          if (!meeting_date) missingFields.push("meeting date");
+          if (!batch_no) missingFields.push("batch number");
+          if (!cab_name) missingFields.push("cab name");
 
           const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
           await sendMessageToUser(phoneNumber, missingMessage);
@@ -292,78 +341,82 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
+        // Compare cab booking date with today's date
         const today = new Date();
-        const [day, month, year] = booking_date.split('/').map(num => parseInt(num, 10));
-        const cabBookingDate = new Date(year, month - 1, day);
+        const [day, month, year] = meeting_date.split('-').map(num => parseInt(num, 10));
+        const bookingDate = new Date(year, month - 1, day);
 
-        if (cabBookingDate < today) {
+        if (bookingDate < today) {
           await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
           res.sendStatus(200);
           return;
         }
 
-        const formattedPickupTime = convertToAmPm(pickup_time);
+        // Check for existing cab bookings
+        const existingCabBookings = await cabCollection.find({
+          "data.meeting_date": meeting_date,
+          "data.batch_no": batch_no,
+          "data.cab_name": cab_name
+        }).toArray();
 
-        const cabBookingId = await generateBookingId(cabBookingCollection, 'cabbooking');
+        if (existingCabBookings.length > 0) {
+          await sendMessageToUser(phoneNumber, `Another cab has been booked during this time with the same details.`);
+          res.sendStatus(200);
+          return;
+        }
 
-        const cabBookingData = {
-          _id: cabBookingId,
+        // Insert new cab booking
+        const cabId = await generateCabId(cabCollection);
+        const cabData = {
+          _id: cabId,
           data: {
-            pickup_location,
-            drop_location,
-            cab_type,
-            booking_date,
-            pickup_time: formattedPickupTime,
-            employee: phoneNumber
+            meeting_date,
+            batch_no,
+            cab_name
           }
         };
 
-        await cabBookingCollection.insertOne(cabBookingData);
-        await sendMessageToUser(phoneNumber, `Your cab has been booked successfully with ID ${cabBookingId}.`);
+        await cabCollection.insertOne(cabData);
+        await sendMessageToUser(phoneNumber, `Cab booked successfully. Your cab ID is ${cabId}.`);
+        res.sendStatus(200);
+        return;
       }
 
+      // Handle cab cancelling intent
       if (intent === "cab_cancelling") {
-        const { booking_date, cab_type, ...extraEntities } = intentData;
+        const { cabbooking_id } = intentData;
 
-        const expectedEntities = ["booking_date", "cab_type"];
-        const providedEntities = Object.keys(intentData);
-
-        const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
-
-        if (extraEntitiesDetected.length > 0) {
-          await sendMessageToUser(phoneNumber, "I can't cancel the cab booking as you provided irrelevant information.");
+        if (!cabbooking_id || !cabbooking_id.startsWith("cabbooking:")) {
+          await sendMessageToUser(phoneNumber, "Invalid cab booking ID format. Please provide the ID in the format cabbooking:x.");
           res.sendStatus(200);
           return;
         }
 
-        const existingBooking = await cabBookingCollection.findOne({
-          "data.booking_date": booking_date,
-          "data.cab_type": cab_type,
-          "data.employee": phoneNumber
-        });
+        const result = await cabCollection.deleteOne({ _id: cabbooking_id });
 
-        if (!existingBooking) {
-          await sendMessageToUser(phoneNumber, "There is no cab booking on the specified date with the specified details.");
-          res.sendStatus(200);
-          return;
+        if (result.deletedCount === 0) {
+          await sendMessageToUser(phoneNumber, `No ride found for cancellation with the provided ID ${cabbooking_id}.`);
+        } else {
+          await sendMessageToUser(phoneNumber, "Your ride has been cancelled successfully.");
         }
 
-        await cabBookingCollection.deleteOne({ _id: existingBooking._id });
-        await sendMessageToUser(phoneNumber, "Your cab booking has been cancelled successfully.");
+        res.sendStatus(200);
+        return;
       }
 
+      await sendMessageToUser(phoneNumber, "Intent not recognized.");
       res.sendStatus(200);
     } catch (error) {
-      console.error("Error processing webhook message:", error);
-      await sendMessageToUser(phoneNumber, "An error occurred while processing your request. Please try again later.");
+      console.error("Error handling message:", error);
+      await sendMessageToUser(phoneNumber, "An error occurred while processing your request.");
       res.sendStatus(500);
     }
   } else {
-    res.sendStatus(200);
+    await sendMessageToUser(phoneNumber, "Unsupported message type.");
+    res.sendStatus(400);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
-
