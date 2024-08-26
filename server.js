@@ -53,6 +53,21 @@ async function generateMeetingId(collection) {
   return newId;
 }
 
+async function generateCabBookingId(collection) {
+    let lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
+    let lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
+    let newId;
+    let isDuplicate;
+
+    do {
+        newId = `cabbooking:${lastId + 1}`;
+        isDuplicate = await collection.findOne({ _id: newId });
+        lastId++; // Increment to avoid reusing the same ID
+    } while (isDuplicate);
+
+    return newId;
+}
+
 
 function parsePredictResponse(response) {
   if (typeof response === 'string') {
@@ -325,6 +340,57 @@ app.post("/webhook", async (req, res) => {
         res.sendStatus(200);
         return;
       }
+      // Handle cab booking intent
+} else if (intent === "cab_booking") {
+    const { meeting_date, batch_no, cab_name, ...extraEntities } = intentData;
+
+    const expectedEntities = ["meeting_date", "batch_no", "cab_name"];
+    const providedEntities = Object.keys(intentData);
+
+    // Check for extra entities
+    const extraEntitiesDetected = providedEntities.filter(entity => !expectedEntities.includes(entity) && entity !== 'intent');
+
+    if (extraEntitiesDetected.length > 0) {
+        await sendMessageToUser(phoneNumber, "I can't book the cab as you provided irrelevant information.");
+        res.sendStatus(200);
+        return;
+    }
+
+    if (!meeting_date || !batch_no || !cab_name) {
+        const missingFields = [];
+        if (!meeting_date) missingFields.push("meeting date");
+        if (!batch_no) missingFields.push("batch number");
+        if (!cab_name) missingFields.push("cab name");
+
+        const missingMessage = `The following entries are missing: ${missingFields.join(", ")}. Please start entering from the beginning.`;
+        await sendMessageToUser(phoneNumber, missingMessage);
+        res.sendStatus(200);
+        return;
+    }
+
+    const collection = await connectToMongoDB();
+    const cabBookingCollection = dbClient.db(dbName).collection("cab_booking");
+
+    const cabBookingId = await generateCabBookingId(cabBookingCollection);
+
+    const bookingData = {
+        _id: cabBookingId,
+        data: {
+            meeting_date,
+            intent,
+            batch_no,
+            cab_name,
+            employee: phoneNumber
+        }
+    };
+
+    await cabBookingCollection.insertOne(bookingData);
+    const successMessage = `Cab has been booked successfully with Cab Booking ID: ${cabBookingId}`;
+    await sendMessageToUser(phoneNumber, successMessage);
+    res.json({ success: successMessage });
+    return;
+}
+
 
       res.json({ error: "Intent not recognized" });
 
