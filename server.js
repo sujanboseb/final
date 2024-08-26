@@ -343,9 +343,9 @@ app.post("/webhook", async (req, res) => {
           return;
 
         } else if (intent === "cab_booking") {
-          const { booking_date, batch_no, cab_name, ...extraEntities } = intentData;
+          const { meeting_date, batch_no, cab_name, ...extraEntities } = intentData;
 
-          const expectedEntities = ["booking_date", "batch_no", "cab_name"];
+          const expectedEntities = ["meeting_date", "batch_no", "cab_name"];
           const providedEntities = Object.keys(intentData);
 
           // Check for extra entities
@@ -357,9 +357,9 @@ app.post("/webhook", async (req, res) => {
             return;
           }
 
-          if (!booking_date || !batch_no || !cab_name) {
+          if (!meeting_date || !batch_no || !cab_name) {
             const missingFields = [];
-            if (!booking_date) missingFields.push("booking date");
+            if (!meeting_date) missingFields.push("meeting_date");
             if (!batch_no) missingFields.push("batch number");
             if (!cab_name) missingFields.push("cab name");
 
@@ -371,10 +371,10 @@ app.post("/webhook", async (req, res) => {
 
           // Compare booking date with today's date
           const today = new Date();
-          const [day, month, year] = booking_date.split('/').map(num => parseInt(num, 10));
-          const bookingDate = new Date(year, month - 1, day); // Adjusting the date format
+          const [day, month, year] = meeting_date.split('/').map(num => parseInt(num, 10));
+          const meetingDate = new Date(year, month - 1, day); // Adjusting the date format
 
-          if (bookingDate < today) {
+          if (meetingDate < today) {
             await sendMessageToUser(phoneNumber, "Please enter a correct date because you entered a past date.");
             res.sendStatus(200);
             return;
@@ -386,7 +386,7 @@ app.post("/webhook", async (req, res) => {
           const bookingData = {
             _id: cabId,
             data: {
-              booking_date,
+              meeting_date,
               batch_no,
               cab_name,
               employee: phoneNumber
