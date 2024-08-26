@@ -127,6 +127,12 @@ app.post("/webhook", async (req, res) => {
       const userMessage = message.text.body;
       const phoneNumber = message.from;
 
+      if (!phoneNumber) {
+        console.error("Phone number is not defined.");
+        res.sendStatus(400);
+        return;
+      }
+
       console.log("User message received:", userMessage);
 
       if (isGreeting(userMessage)) {
@@ -465,6 +471,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(500);
   }
 });
+
 
 
 app.get("/webhook", (req, res) => {
