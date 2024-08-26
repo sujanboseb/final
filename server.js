@@ -41,7 +41,16 @@ async function connectToMongoDB() {
 async function generateMeetingId(collection) {
   const lastDocument = await collection.find().sort({ _id: -1 }).limit(1).toArray();
   const lastId = lastDocument.length ? parseInt(lastDocument[0]._id.split(':')[1], 10) : 0;
-  return `meetingbooking:${lastId + 1}`;
+  let newId;
+  let isDuplicate;
+
+  do {
+    newId = `meetingbooking:${lastId + 1}`;
+    isDuplicate = await collection.findOne({ _id: newId });
+    lastId++; // Increment to avoid reusing the same ID
+  } while (isDuplicate);
+
+  return newId;
 }
 
 function parsePredictResponse(response) {
