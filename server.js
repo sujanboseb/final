@@ -90,7 +90,7 @@ function isInvalidMessage(message) {
 }
 
 function convertToAmPm(time) {
-   const timeMatch = time.match(/(\d{1,2}):?(\d{2})?\s*([aApP][mM])?/);
+    const timeMatch = time.match(/(\d{1,2})(?::(\d{2}))?\s*([aApP][mM])?/);
     if (!timeMatch) {
         throw new Error(`Invalid time format: ${time}`);
     }
@@ -98,6 +98,7 @@ function convertToAmPm(time) {
     let [ , hours, minutes = "00", period ] = timeMatch;
     hours = parseInt(hours, 10);
 
+    // Convert hours based on period
     if (period) {
         period = period.toLowerCase();
         if (period === 'pm' && hours < 12) {
@@ -105,10 +106,13 @@ function convertToAmPm(time) {
         } else if (period === 'am' && hours === 12) {
             hours = 0;
         }
+    } else if (hours === 12) {
+        hours = 0; // Handle 12:xx without AM/PM
     }
 
     return `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
 }
+
 
 
 app.post("/webhook", async (req, res) => {
@@ -135,7 +139,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Call the prediction service
-      const response = await axios.post('https://def5-23-236-61-55.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('https://a9df-23-236-61-55.ngrok-free.app/predict', { text: userMessage });
       console.log("Response from prediction service:", response.data);
 
       const intentData = parsePredictResponse(response.data);
