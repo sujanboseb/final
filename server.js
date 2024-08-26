@@ -121,18 +121,25 @@ function convertToAmPm(time) {
 app.post("/webhook", async (req, res) => {
   try {
     console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
-    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    const entry = req.body.entry?.[0]?.changes?.[0]?.value;
+    if (!entry) {
+      console.error("No entry data found in webhook payload.");
+      res.sendStatus(400);
+      return;
+    }
+
+    const message = entry.messages?.[0];
+    const phoneNumber = message?.from;
+
+    if (!phoneNumber) {
+      console.error("Phone number is not defined.");
+      res.sendStatus(400);
+      return;
+    }
 
     if (message?.type === "text") {
       const userMessage = message.text.body;
-      const phoneNumber = message.from;
-
-      if (!phoneNumber) {
-        console.error("Phone number is not defined.");
-        res.sendStatus(400);
-        return;
-      }
-
       console.log("User message received:", userMessage);
 
       if (isGreeting(userMessage)) {
@@ -471,6 +478,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(500);
   }
 });
+
 
 
 
