@@ -126,7 +126,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Call the prediction service
-      const response = await axios.post('https://21cb-34-85-175-167.ngrok-free.app/predict', { text: userMessage });
+      const response = await axios.post('"https://21cb-34-85-175-167.ngrok-free.app/predict', { text: userMessage });
       console.log("Response from prediction service:", response.data);
 
       const intentData = parsePredictResponse(response.data);
@@ -224,8 +224,8 @@ app.post("/webhook", async (req, res) => {
         }).toArray();
 
         if (existingBookings.length > 0) {
-          await sendMessageToUser(phoneNumber, `Another meeting has been booked during this time in the ${hall_name}.`);
-          res.json({ error: "Another meeting has been booked during this time in the hall." });
+          await sendMessageToUser(phoneNumber, `Sorry, during that time a meeting has already been booked in the hall ${hall_name}.`);
+          res.sendStatus(200);
           return;
         }
 
@@ -372,7 +372,8 @@ app.post("/webhook", async (req, res) => {
           data: {
             meeting_date,
             batch_no,
-            cab_name
+            cab_name,
+            phoneNumber
           }
         };
 
