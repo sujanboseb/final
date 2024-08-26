@@ -89,7 +89,7 @@ function isInvalidMessage(message) {
   return words.some(word => stopWords.includes(word)) && message.length < 5;
 }
 
-function convertTo24HourFormat(time) {
+function convertToAmPm(time) {
     const [timePart, period] = time.match(/(\d+)([aApP][mM])/).slice(1);
     let hours = parseInt(timePart, 10);
 
