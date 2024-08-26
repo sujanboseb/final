@@ -89,8 +89,17 @@ function isInvalidMessage(message) {
   return words.some(word => stopWords.includes(word)) && message.length < 5;
 }
 
-function convertToAmPm(time) {
-  return moment(time, "HH:mm").format("hh:mm A");
+function convertTo24HourFormat(time) {
+    const [timePart, period] = time.match(/(\d+)([aApP][mM])/).slice(1);
+    let hours = parseInt(timePart, 10);
+
+    if (period.toLowerCase() === 'pm' && hours < 12) {
+        hours += 12;
+    } else if (period.toLowerCase() === 'am' && hours === 12) {
+        hours = 0;
+    }
+
+    return `${hours.toString().padStart(2, '0')}:00`;
 }
 
 app.post("/webhook", async (req, res) => {
