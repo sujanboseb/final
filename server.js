@@ -152,6 +152,7 @@ app.post("/webhook", async (req, res) => {
 
       const collection = await connectToMongoDB();
       const hallDetailsCollection = dbClient.db(dbName).collection("hall_details");
+      const cabBookingCollection = dbClient.db(dbName).collection("cab_booking");
       const intent = intentData.intent;
 
       if (!intent) {
@@ -275,7 +276,7 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
-        const meetingId = meetingIdMatch[0];
+        const meetingId = meetingIdMatch[1];
 
         // Check if the meeting ID exists
         const meeting = await collection.findOne({ _id: meetingId });
@@ -366,8 +367,6 @@ app.post("/webhook", async (req, res) => {
           return;
         }
 
-        const cabBookingCollection = dbClient.db(dbName).collection("cab_booking");
-
         const cabBookingId = await generateCabBookingId(cabBookingCollection);
 
         const bookingData = {
@@ -386,6 +385,41 @@ app.post("/webhook", async (req, res) => {
         await sendMessageToUser(phoneNumber, successMessage);
         res.json({ success: successMessage });
         return;
+
+      } else if (intent === "cab_cancelling") {
+        const cabBookingIdMatch = userMessage.match(/cab_booking:(\d+)/);
+
+        if (!cabBookingIdMatch) {
+          await sendMessageToUser(phoneNumber, "Please provide a valid cab booking ID in the format 'cab_booking:X' where X is the cab booking number.");
+          res.sendStatus(200);
+          return;
+        }
+
+        const cabBookingId = cabBookingIdMatch[1];
+
+        // Check if the cab booking ID exists
+        const cabBooking = await cabBookingCollection.findOne({ _id: cabBookingId });
+
+        if (!cabBooking) {
+          await sendMessageToUser(phoneNumber, "You have entered the wrong cab booking ID.");
+          res.sendStatus(200);
+          return;
+        }
+
+        // Check for extra entities
+        const extraEntitiesDetected = Object.keys(intentData).filter(entity => !["intent"].includes(entity));
+        if (extraEntitiesDetected.length > 0) {
+          await sendMessageToUser(phoneNumber, "New entries were added; cab booking was not cancelled.");
+          res.sendStatus(200);
+          return;
+        }
+
+        // Delete the cab booking
+        await cabBookingCollection.deleteOne({ _id: cabBookingId });
+        await sendMessageToUser(phoneNumber, "Cab booking has been successfully removed.");
+        res.sendStatus(200);
+        return;
+
       } else {
         await sendMessageToUser(phoneNumber, "Sorry, I didn't understand your request.");
         res.sendStatus(200);
@@ -401,6 +435,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(400); // Bad Request
   }
 });
+
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
