@@ -381,33 +381,31 @@ app.post("/webhook", async (req, res) => {
       }
 
       // Cab cancelling logic here
+        // Cab cancelling logic here
       if (intent === "cab_cancelling") {
-        const cabBookingIdRegex = /^cabbooking:(\d+)$/;
-        const match = userMessage.match(cabBookingIdRegex);
-
-        if (!match) {
-          await sendMessageToUser(phoneNumber, "Invalid cab booking ID format. Please provide the ID in the format cabbooking:x.");
-          res.sendStatus(200);
-          return;
-        }
-
-        const cabBookingId = match[0];
-        const result = await cabBookingCollection.findOneAndDelete({ _id: cabBookingId });
-
-        if (result.value) {
-          await sendMessageToUser(phoneNumber, "Your ride has been cancelled successfully.");
-        } else {
-          await sendMessageToUser(phoneNumber, "No ride found for cancellation with the provided ID.");
-        }
+          const cabBookingIdRegex = /cabbooking:(\d+)/;
+          const match = userMessage.match(cabBookingIdRegex);
+      
+          if (!match || match.length > 1) {
+              if (!match) {
+                  await sendMessageToUser(phoneNumber, "No valid cab booking ID found in your message. Please provide the ID in the format cabbooking:x.");
+              } else {
+                  await sendMessageToUser(phoneNumber, "More than one cab booking ID provided. Please provide only one ID in the format cabbooking:x.");
+              }
+              res.sendStatus(200);
+              return;
+          }
+      
+          const cabBookingId = match[0]; // This will be something like "cabbooking:1"
+          const result = await cabBookingCollection.findOneAndDelete({ _id: cabBookingId });
+      
+          if (result.value) {
+              await sendMessageToUser(phoneNumber, "Your ride has been cancelled successfully.");
+          } else {
+              await sendMessageToUser(phoneNumber, `No ride found for cancellation with the provided ID ${cabBookingId}.`);
+          }
       }
-    } catch (error) {
-      console.error("Error processing user message:", error);
-      await sendMessageToUser(phoneNumber, "An error occurred while processing your request.");
-    }
-  }
 
-  res.sendStatus(200);
-});
 
 app.get("/webhook", (req, res) => {
   const verifyToken = WEBHOOK_VERIFY_TOKEN;
