@@ -386,25 +386,52 @@ app.post("/webhook", async (req, res) => {
         res.json({ success: successMessage });
         return;
 
-      } else if (intent === "cab_cancelling") {
-        const cabBookingIdMatch = userMessage.match(/cabbooking:(\d+)/);
+      }  else if (intent === "cab_cancelling") {
+    // Enhanced regex to match various formats
+    const cabBookingIdMatch = userMessage.match(/cab[_ ]?booking[: ](\d+)/i);
 
-        if (!cabBookingIdMatch) {
-          await sendMessageToUser(phoneNumber, "Please provide a valid cab booking ID in the format 'cab_booking:X' where X is the cab booking number.");
-          res.sendStatus(200);
-          return;
-        }
+    if (!cabBookingIdMatch) {
+        await sendMessageToUser(phoneNumber, "Please provide a valid cab booking ID in the format 'cab_booking: X' where X is the booking number.");
+        res.sendStatus(200);
+        return;
+    }
 
-        const cabBookingId = cabBookingIdMatch[1];
+    const cabBookingId = cabBookingIdMatch[1].trim();
 
-        // Check if the cab booking ID exists
-        const cabBooking = await cabBookingCollection.findOne({ _id: cabBookingId });
+    // Convert to appropriate data type (adjust based on your DB schema)
+    const cabBookingIdNumber = parseInt(cabBookingId, 10);
 
-        if (!cabBooking) {
-          await sendMessageToUser(phoneNumber, "You have entered the wrong cab booking ID.");
-          res.sendStatus(200);
-          return;
-        }
+    if (isNaN(cabBookingIdNumber)) {
+        await sendMessageToUser(phoneNumber, "The provided cab booking ID is invalid.");
+        res.sendStatus(200);
+        return;
+    }
+
+    console.log(`Attempting to cancel cab booking with ID: ${cabBookingIdNumber}`);
+
+    // Fetch the booking from the database
+    const cabBooking = await cabBookingCollection.findOne({ _id: cabBookingIdNumber });
+
+    if (!cabBooking) {
+        await sendMessageToUser(phoneNumber, `No cab booking found with ID: ${cabBookingIdNumber}.`);
+        res.sendStatus(200);
+        return;
+    }
+
+    // Check for extra entities in intentData
+    const extraEntitiesDetected = Object.keys(intentData).filter(entity => entity !== "intent");
+    if (extraEntitiesDetected.length > 0) {
+        await sendMessageToUser(phoneNumber, "Extra information detected. Please provide only the cab booking ID to cancel a booking.");
+        res.sendStatus(200);
+        return;
+    }
+
+    // Delete the booking from the cab_booking collection
+    await cabBookingCollection.deleteOne({ _id: cabBookingIdNumber });
+    await sendMessageToUser(phoneNumber, `Cab booking with ID ${cabBookingIdNumber} has been successfully cancelled.`);
+    res.sendStatus(200);
+    return;
+}
 
         // Check for extra entities
         const extraEntitiesDetected = Object.keys(intentData).filter(entity => !["intent"].includes(entity));
