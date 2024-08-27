@@ -226,17 +226,20 @@ app.post("/webhook", async (req, res) => {
     }
 });
 
-// Webhook verification
 app.get("/webhook", (req, res) => {
-    const {hub.mode, hub.challenge, hub.verify_token} = req.query;
-    if (hub.mode === "subscribe" && hub.verify_token === WEBHOOK_VERIFY_TOKEN) {
+    const mode = req.query['hub.mode'];
+    const challenge = req.query['hub.challenge'];
+    const verifyToken = req.query['hub.verify_token'];
+
+    if (mode === "subscribe" && verifyToken === WEBHOOK_VERIFY_TOKEN) {
         console.log("Webhook verification successful.");
-        res.status(200).send(hub.challenge);
+        res.status(200).send(challenge);
     } else {
         console.error("Webhook verification failed.");
         res.sendStatus(403);
     }
 });
+
 
 // Start the server
 const port = PORT || 3000;
