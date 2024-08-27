@@ -47,32 +47,49 @@ async function connectToMongoDB() {
   return { meetingCollection, cabBookingCollection };
 }
 
+// Function to parse the prediction response
+function parsePredictResponse(data) {
+  // Handle parsing based on expected response structure
+  if (data.Errors) {
+    return { error: `Error: ${data.Errors}` };
+  }
+
+  return {
+    intent: data.intent || null,
+    meeting_date: data.meeting_date || null,
+    starting_time: data.starting_time || null,
+    ending_time: data.ending_time || null,
+    hall_name: data.hall_name || null,
+    no_of_persons: data.no_of_persons || null,
+    batch_no: data.batch_no || null,
+    cab_name: data.cab_name || null,
+  };
+}
+
 // Function to process messages and send requests to the external API
 async function processMessageWithApi(message) {
-  const apiUrl = "https://35b5-34-138-39-113.ngrok-free.app/predict";
+  const apiUrl = "https://21cb-34-85-175-167.ngrok-free.app/predict";
   try {
+    // Call the prediction service
     const response = await axios.post(apiUrl, { text: message }, {
       headers: { "Content-Type": "application/json" }
     });
 
-    const data = response.data;
+    console.log("Response from prediction service:", response.data);
 
-    // Check for errors
-    if (data.Errors) {
-      return `Error: ${data.Errors}`;
+    // Parse the prediction response
+    const intentData = parsePredictResponse(response.data);
+
+    // Log the parsed intent data
+    console.log("Parsed response from prediction service:", JSON.stringify(intentData, null, 2));
+
+    // Return error message if there's an error
+    if (intentData.error) {
+      return intentData.error;
     }
 
-    // Extract fields with null checks
-    const intent = data.intent || null;
-    const meeting_date = data.meeting_date || null;
-    const starting_time = data.starting_time || null;
-    const ending_time = data.ending_time || null;
-    const hall_name = data.hall_name || null;
-    const no_of_persons = data.no_of_persons || null;
-    const batch_no = data.batch_no || null;
-    const cab_name = data.cab_name || null;
-
-    return `Intent: ${intent}, Meeting Date: ${meeting_date}, Starting Time: ${starting_time}, Ending Time: ${ending_time}, Hall Name: ${hall_name}, No. of Persons: ${no_of_persons}, Batch No: ${batch_no}, Cab Name: ${cab_name}`;
+    // Return formatted response
+    return `Intent: ${intentData.intent}, Meeting Date: ${intentData.meeting_date}, Starting Time: ${intentData.starting_time}, Ending Time: ${intentData.ending_time}, Hall Name: ${intentData.hall_name}, No. of Persons: ${intentData.no_of_persons}, Batch No: ${intentData.batch_no}, Cab Name: ${intentData.cab_name}`;
 
   } catch (error) {
     console.error("Error processing message with API:", error.message);
