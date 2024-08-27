@@ -12,7 +12,7 @@ app.use(express.json());
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT } = process.env;
 
 // MongoDB connection details
-const mongoUri = process.env.MONGO_URI; // Mongo URI moved to .env file
+const mongoUri = `mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`; // Mongo URI moved to .env file
 const dbName = "sujan";
 const meetingCollectionName = "meeting booking";
 const cabBookingCollectionName = "cabbooking";
