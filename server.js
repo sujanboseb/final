@@ -69,7 +69,7 @@ function checkGreetingMessage(messageText) {
 async function processMessageWithApi(messageText) {
   try {
     const response = await axios.post(
-      "https://319b-34-138-39-113.ngrok-free.app",
+      "https://319b-34-138-39-113.ngrok-free.app/predict",
       { message: messageText }
     );
 
