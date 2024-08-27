@@ -1,10 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 const express = require("express");
 const axios = require("axios");
 const dotenv = require("dotenv");
@@ -69,17 +62,15 @@ async function processMessageWithApi(message) {
       return `Error: ${data.Errors}`;
     }
 
-    // Extract fields
-    const {
-      intent = null,
-      meeting_date = null,
-      starting_time = null,
-      ending_time = null,
-      hall_name = null,
-      no_of_persons = null,
-      batch_no = null,
-      cab_name = null
-    } = data;
+    // Extract fields with null checks
+    const intent = data.intent || null;
+    const meeting_date = data.meeting_date || null;
+    const starting_time = data.starting_time || null;
+    const ending_time = data.ending_time || null;
+    const hall_name = data.hall_name || null;
+    const no_of_persons = data.no_of_persons || null;
+    const batch_no = data.batch_no || null;
+    const cab_name = data.cab_name || null;
 
     return `Intent: ${intent}, Meeting Date: ${meeting_date}, Starting Time: ${starting_time}, Ending Time: ${ending_time}, Hall Name: ${hall_name}, No. of Persons: ${no_of_persons}, Batch No: ${batch_no}, Cab Name: ${cab_name}`;
 
