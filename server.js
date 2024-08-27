@@ -49,21 +49,34 @@ async function connectToMongoDB() {
 
 // Function to parse the prediction response
 function parsePredictResponse(data) {
-  // Handle parsing based on expected response structure
+  const parsedData = {
+    intent: null,
+    meeting_date: null,
+    starting_time: null,
+    ending_time: null,
+    hall_name: null,
+    no_of_persons: null,
+    batch_no: null,
+    cab_name: null,
+    error: null
+  };
+
+  // Check for errors
   if (data.Errors) {
-    return { error: `Error: ${data.Errors}` };
+    parsedData.error = `Error: ${data.Errors}`;
+  } else {
+    // Extract fields if no errors
+    parsedData.intent = data.intent || null;
+    parsedData.meeting_date = data.meeting_date || null;
+    parsedData.starting_time = data.starting_time || null;
+    parsedData.ending_time = data.ending_time || null;
+    parsedData.hall_name = data.hall_name || null;
+    parsedData.no_of_persons = data.no_of_persons || null;
+    parsedData.batch_no = data.batch_no || null;
+    parsedData.cab_name = data.cab_name || null;
   }
 
-  return {
-    intent: data.intent || null,
-    meeting_date: data.meeting_date || null,
-    starting_time: data.starting_time || null,
-    ending_time: data.ending_time || null,
-    hall_name: data.hall_name || null,
-    no_of_persons: data.no_of_persons || null,
-    batch_no: data.batch_no || null,
-    cab_name: data.cab_name || null,
-  };
+  return parsedData;
 }
 
 // Function to process messages and send requests to the external API
@@ -89,7 +102,7 @@ async function processMessageWithApi(message) {
     }
 
     // Return formatted response
-    return `Intent: ${intentData.intent}, Meeting Date: ${intentData.meeting_date}, Starting Time: ${intentData.starting_time}, Ending Time: ${intentData.ending_time}, Hall Name: ${intentData.hall_name}, No. of Persons: ${intentData.no_of_persons}, Batch No: ${intentData.batch_no}, Cab Name: ${intentData.cab_name}`;
+    return `Intent: ${intentData.intent || 'N/A'}, Meeting Date: ${intentData.meeting_date || 'N/A'}, Starting Time: ${intentData.starting_time || 'N/A'}, Ending Time: ${intentData.ending_time || 'N/A'}, Hall Name: ${intentData.hall_name || 'N/A'}, No. of Persons: ${intentData.no_of_persons || 'N/A'}, Batch No: ${intentData.batch_no || 'N/A'}, Cab Name: ${intentData.cab_name || 'N/A'}`;
 
   } catch (error) {
     console.error("Error processing message with API:", error.message);
