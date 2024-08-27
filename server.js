@@ -50,7 +50,6 @@ async function connectToMongoDB() {
   return { meetingCollection, cabBookingCollection, hallDetailsCollection };
 }
 
-// Function to parse the prediction response
 function parsePredictResponse(response) {
   if (typeof response === 'string') {
     const result = {};
@@ -106,12 +105,12 @@ async function processMessageWithApi(message) {
     // Check if the intent is meeting_booking
     if (intentData.intent === "meeting_booking") {
       const {
-       onst {
-        meeting_date = intentData.meeting_date,
-        starting_time = intentData.starting_time,
-        ending_time = intentData.ending_time,
-        hall_name = intentData.hall_name,
-        no_of_persons = intentData.no_of_persons
+        meeting_date = null,
+        hall_name = null,
+        no_of_persons = null,
+        starting_time = null,
+        ending_time = null,
+        ...extraEntities
       } = intentData;
 
       const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
