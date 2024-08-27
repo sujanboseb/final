@@ -65,6 +65,54 @@ function checkGreetingMessage(messageText) {
   return (hiCount + helloCount) > 2;
 }
 
+// Function to send the message to the external API and parse the response
+async function processMessageWithApi(messageText) {
+  try {
+    const response = await axios.post(
+      "https://319b-34-138-39-113.ngrok-free.app",
+      { message: messageText }
+    );
+
+    const apiData = response.data;
+
+    // Check if the API returned an error
+    if (apiData.includes("Errors: Error:")) {
+      return { error: apiData };  // Return the error message
+    }
+
+    const parsedData = {};
+
+    // Parse the response data and mark missing fields as null
+    const fields = [
+      "intent",
+      "meeting_date",
+      "starting_time",
+      "ending_time",
+      "hall_name",
+      "no_of_persons",
+      "batch_no",
+      "cab_name"
+    ];
+
+    apiData.split(',').forEach(pair => {
+      const [key, value] = pair.trim().split(':').map(s => s.trim());
+      parsedData[key] = value || null;
+    });
+
+    // Ensure all fields are present, filling in missing ones with null
+    fields.forEach(field => {
+      if (!parsedData.hasOwnProperty(field)) {
+        parsedData[field] = null;
+      }
+    });
+
+    return parsedData;
+  } catch (error) {
+    console.error("Error processing message with API:", error);
+    return null;
+  }
+}
+
 // Webhook endpoint for WhatsApp messages
 app.post("/webhook", async (req, res) => {
   // Log incoming messages
@@ -79,25 +127,6 @@ app.post("/webhook", async (req, res) => {
 
     // Check if "hi" or "hello" appear more than twice
     if (checkGreetingMessage(messageText)) {
-      // Extract the business number to send the reply from it
-      const business_phone_number_id =
-        req.body.entry?.[0].changes?.[0]?.value?.metadata?.phone_number_id;
-
-      // Send a reply message
-      await axios({
-        method: "POST",
-        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-        },
-        data: {
-          messaging_product: "whatsapp",
-          to: message.from,
-          text: { body: "Welcome to cab booking and hall management system" },
-        },
-      });
-    } else {
-      // Normal echo response if the greeting condition is not met
       const business_phone_number_id =
         req.body.entry?.[0].changes?.[0]?.value?.metadata?.phone_number_id;
 
@@ -111,12 +140,75 @@ app.post("/webhook", async (req, res) => {
         data: {
           messaging_product: "whatsapp",
           to: message.from,
-          text: { body: "Echo: " + messageText },
-          context: {
-            message_id: message.id, // Shows the message as a reply to the original user message
-          },
+          text: { body: "Welcome to cab booking and hall management system" },
         },
       });
+    } else {
+      // Send the message to the external API
+      const parsedData = await processMessageWithApi(messageText);
+
+      if (parsedData) {
+        const business_phone_number_id =
+          req.body.entry?.[0].changes?.[0]?.value?.metadata?.phone_number_id;
+
+        // If there's an error from the API, send it to the user
+        if (parsedData.error) {
+          await axios({
+            method: "POST",
+            url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
+            headers: {
+              Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+            },
+            data: {
+              messaging_product: "whatsapp",
+              to: message.from,
+              text: { body: parsedData.error },
+              context: {
+                message_id: message.id, // Shows the message as a reply to the original user message
+              },
+            },
+          });
+        } else {
+          // Access the parsed variables individually
+          const intent = parsedData.intent;
+          const meetingDate = parsedData.meeting_date;
+          const startingTime = parsedData.starting_time;
+          const endingTime = parsedData.ending_time;
+          const hallName = parsedData.hall_name;
+          const noOfPersons = parsedData.no_of_persons;
+          const batchNo = parsedData.batch_no;
+          const cabName = parsedData.cab_name;
+
+          // Log the extracted variables
+          console.log(`Intent: ${intent}`);
+          console.log(`Meeting Date: ${meetingDate}`);
+          console.log(`Starting Time: ${startingTime}`);
+          console.log(`Ending Time: ${endingTime}`);
+          console.log(`Hall Name: ${hallName}`);
+          console.log(`Number of Persons: ${noOfPersons}`);
+          console.log(`Batch No: ${batchNo}`);
+          console.log(`Cab Name: ${cabName}`);
+
+          // Send a reply message based on extracted data
+          await axios({
+            method: "POST",
+            url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+            headers: {
+              Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+            },
+            data: {
+              messaging_product: "whatsapp",
+              to: message.from,
+              text: {
+                body: `Your request for ${intent} has been received. Details: ${JSON.stringify(parsedData)}`
+              },
+              context: {
+                message_id: message.id, // Shows the message as a reply to the original user message
+              },
+            },
+          });
+        }
+      }
     }
 
     // Mark incoming message as read
@@ -154,13 +246,11 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// Basic endpoint for health check
 app.get("/", (req, res) => {
   res.send(`<pre>Nothing to see here.
 Checkout README.md to start.</pre>`);
 });
 
-// Start the server
 app.listen(PORT, () => {
   console.log(`Server is listening on port: ${PORT}`);
 });
