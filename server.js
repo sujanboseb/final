@@ -1,10 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 const express = require("express");
 const axios = require("axios");
 const dotenv = require("dotenv");
@@ -19,7 +12,7 @@ app.use(express.json());
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT } = process.env;
 
 // MongoDB connection details
-const mongoUri = `mongodb+srv://sujanboseplant04:XY1LyC86iRTjEgba@cluster0.mrenu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const mongoUri = process.env.MONGO_URI; // Mongo URI moved to .env file
 const dbName = "sujan";
 const meetingCollectionName = "meeting booking";
 const cabBookingCollectionName = "cabbooking";
@@ -108,8 +101,8 @@ async function processMessageWithApi(messageText) {
 
     return parsedData;
   } catch (error) {
-    console.error("Error processing message with API:", error);
-    return null;
+    console.error("Error processing message with API:", error.response?.data || error.message);
+    return { error: `Error processing message: ${error.response?.data || error.message}` };
   }
 }
 
@@ -133,7 +126,7 @@ app.post("/webhook", async (req, res) => {
       // Send a reply message
       await axios({
         method: "POST",
-        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
+        url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
         headers: {
           Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
         },
@@ -192,7 +185,7 @@ app.post("/webhook", async (req, res) => {
           // Send a reply message based on extracted data
           await axios({
             method: "POST",
-            url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+            url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
             headers: {
               Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
             },
@@ -214,7 +207,7 @@ app.post("/webhook", async (req, res) => {
     // Mark incoming message as read
     await axios({
       method: "POST",
-      url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+      url: `https://cef5-34-138-39-113.ngrok-free.app/predict`,
       headers: {
         Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
       },
