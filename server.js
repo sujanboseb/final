@@ -21,7 +21,7 @@ app.post("/webhook", async (req, res) => {
 
     // Forward the message to FastAPI for processing
     try {
-      const response = await axios.post(`https://8e08-34-45-227-183.ngrok-free.app/predict`, {
+      const response = await axios.post(`https://9dd7-34-45-227-183.ngrok-free.app/predict`, {
         text: message.text.body
       });
 
@@ -30,9 +30,9 @@ app.post("/webhook", async (req, res) => {
       // Send a reply message as per the docs here https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
       await axios({
         method: "POST",
-        url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
         headers: {
-          Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
         },
         data: {
           messaging_product: "whatsapp",
@@ -47,7 +47,7 @@ app.post("/webhook", async (req, res) => {
       // Mark incoming message as read
       await axios({
         method: "POST",
-        url: `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
         headers: {
           Authorization: `Bearer ${GRAPH_API_TOKEN}`,
         },
