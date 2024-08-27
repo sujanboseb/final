@@ -53,16 +53,15 @@ async function connectToMongoDB() {
 function parsePredictResponse(response) {
   if (typeof response === 'string') {
     const result = {};
-    // Use a regular expression to match key-value pairs more reliably
-    const pairs = response.match(/(\w+:\s*[^,]+)/g);
-
+    // Split by ', ' first to separate each key-value pair
+    const pairs = response.split(', ').map(pair => pair.trim());
     pairs.forEach(pair => {
-      const [key, value] = pair.split(/:\s*/).map(part => part.trim());
+      // Split by '=' to get the key and value
+      const [key, value] = pair.split('=').map(part => part.trim());
       if (key && value) {
         result[key] = value;
       }
     });
-
     return result;
   }
   return {};
@@ -82,7 +81,7 @@ async function sendMessageToUser(phoneNumber, message) {
 
 // Function to process messages and send requests to the external API
 async function processMessageWithApi(message) {
-  const apiUrl = "https://1f7c-34-138-39-113.ngrok-free.app/predict";
+  const apiUrl = "https://1e01-34-138-39-113.ngrok-free.app/predict";
   try {
     // Call the prediction service
     const response = await axios.post(apiUrl, { text: message }, {
