@@ -48,35 +48,19 @@ async function connectToMongoDB() {
 }
 
 // Function to parse the prediction response
-function parsePredictResponse(data) {
-  const parsedData = {
-    intent: null,
-    meeting_date: null,
-    starting_time: null,
-    ending_time: null,
-    hall_name: null,
-    no_of_persons: null,
-    batch_no: null,
-    cab_name: null,
-    error: null
-  };
-
-  // Check for errors
-  if (data.Errors) {
-    parsedData.error = `Error: ${data.Errors}`;
-  } else {
-    // Extract fields if no errors
-    parsedData.intent = data.intent || null;
-    parsedData.meeting_date = data.meeting_date || null;
-    parsedData.starting_time = data.starting_time || null;
-    parsedData.ending_time = data.ending_time || null;
-    parsedData.hall_name = data.hall_name || null;
-    parsedData.no_of_persons = data.no_of_persons || null;
-    parsedData.batch_no = data.batch_no || null;
-    parsedData.cab_name = data.cab_name || null;
+function parsePredictResponse(response) {
+  if (typeof response === 'string') {
+    const result = {};
+    const pairs = response.split(',').map(pair => pair.trim());
+    pairs.forEach(pair => {
+      const [key, value] = pair.split(':').map(part => part.trim());
+      if (key && value) {
+        result[key] = value;
+      }
+    });
+    return result;
   }
-
-  return parsedData;
+  return {};
 }
 
 // Function to process messages and send requests to the external API
@@ -96,9 +80,9 @@ async function processMessageWithApi(message) {
     // Log the parsed intent data
     console.log("Parsed response from prediction service:", JSON.stringify(intentData, null, 2));
 
-    // Return error message if there's an error
-    if (intentData.error) {
-      return intentData.error;
+    // Check for errors
+    if (intentData.Errors) {
+      return `Error: ${intentData.Errors}`;
     }
 
     // Return formatted response
