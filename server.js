@@ -68,7 +68,7 @@ function parsePredictResponse(data) {
 
 // Function to process messages and send requests to the external API
 async function processMessageWithApi(message) {
-  const apiUrl = "https://21cb-34-85-175-167.ngrok-free.app/predict";
+  const apiUrl = "https://35b5-34-138-39-113.ngrok-free.app/predict";
   try {
     // Call the prediction service
     const response = await axios.post(apiUrl, { text: message }, {
