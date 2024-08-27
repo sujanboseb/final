@@ -54,17 +54,21 @@ async function connectToMongoDB() {
 function parsePredictResponse(response) {
   if (typeof response === 'string') {
     const result = {};
-    const pairs = response.split(',').map(pair => pair.trim());
+    // Use a regular expression to match key-value pairs more reliably
+    const pairs = response.match(/(\w+:\s*[^,]+)/g);
+
     pairs.forEach(pair => {
-      const [key, value] = pair.split(':').map(part => part.trim());
+      const [key, value] = pair.split(/:\s*/).map(part => part.trim());
       if (key && value) {
         result[key] = value;
       }
     });
+
     return result;
   }
   return {};
 }
+
 
 // Function to send messages to users
 async function sendMessageToUser(phoneNumber, message) {
@@ -102,12 +106,12 @@ async function processMessageWithApi(message) {
     // Check if the intent is meeting_booking
     if (intentData.intent === "meeting_booking") {
       const {
-        meeting_date = null,
-        hall_name = null,
-        no_of_persons = null,
-        starting_time = null,
-        ending_time = null,
-        ...extraEntities
+       onst {
+        meeting_date = intentData.meeting_date,
+        starting_time = intentData.starting_time,
+        ending_time = intentData.ending_time,
+        hall_name = intentData.hall_name,
+        no_of_persons = intentData.no_of_persons
       } = intentData;
 
       const expectedEntities = ["meeting_date", "hall_name", "no_of_persons", "starting_time", "ending_time"];
