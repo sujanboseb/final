@@ -4,7 +4,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT,  } = process.env;
+const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT } = process.env;
 
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
@@ -12,49 +12,53 @@ app.post("/webhook", async (req, res) => {
   const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
   if (message?.type === "text") {
-    const userText = message.text.body.toLowerCase();
+    const business_phone_number_id = req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
 
     try {
-      // Forward the message to the Python server for logic processing
+      // Forward the message to Flask server
       const response = await axios.post(`https://895a-35-229-224-205.ngrok-free.app/handle-message`, {
-        text: userText
+        text: message.text.body
       });
 
-      const responseMessage = response.data;
+      const fastApiResponse = response.data;
 
-      // Send the response back to the user on WhatsApp
-      await axios({
-        method: "POST",
-        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-        },
-        data: {
+      // Send a reply message to the user
+      const replyResponse = await axios.post(
+        `https://graph.facebook.com/v20.0/375773435616684/messages`,
+        {
           messaging_product: "whatsapp",
           to: message.from,
-          text: { body: responseMessage },
-          context: {
-            message_id: message.id,
-          },
+          text: { body: `Response from FastAPI: ${fastApiResponse}` },
+          context: { message_id: message.id }
         },
-      });
+        {
+          headers: {
+            Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      // Mark the message as read
-      await axios({
-        method: "POST",
-        url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-        },
-        data: {
+      console.log("Message sent successfully:", replyResponse.data);
+
+      // Mark the incoming message as read
+      await axios.post(
+        `https://graph.facebook.com/v20.0/375773435616684/messages`,
+        {
           messaging_product: "whatsapp",
           status: "read",
-          message_id: message.id,
+          message_id: message.id
         },
-      });
+        {
+          headers: {
+            Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
     } catch (error) {
-      console.error("Error processing message:", error);
+      console.error("Error forwarding message or sending response:", error.response ? error.response.data : error.message);
     }
   }
 
@@ -75,8 +79,7 @@ app.get("/webhook", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send(`<pre>Nothing to see here.
-Checkout README.md to start.</pre>`);
+  res.send(`<pre>Nothing to see here. Checkout README.md to start.</pre>`);
 });
 
 app.listen(PORT, () => {
