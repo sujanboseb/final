@@ -21,7 +21,7 @@ app.post("/webhook", async (req, res) => {
 
     // Forward the message to FastAPI for processing
     try {
-      const response = await axios.post(`https://f5fd-34-45-227-183.ngrok-free.app/predict`, {
+      const response = await axios.post(`https://895a-35-229-224-205.ngrok-free.app/handle-message`, {
         text: message.text.body
       });
 
