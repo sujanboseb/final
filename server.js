@@ -7,27 +7,22 @@ app.use(express.json());
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT,  } = process.env;
 
 app.post("/webhook", async (req, res) => {
-  // Log incoming messages
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
-  // Check if the webhook request contains a message
   const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  // Check if the incoming message contains text
   if (message?.type === "text") {
-    // Extract the business number to send the reply from it
-    const business_phone_number_id =
-      req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
+    const userText = message.text.body.toLowerCase();
 
-    // Forward the message to FastAPI for processing
     try {
+      // Forward the message to the Python server for logic processing
       const response = await axios.post(`https://895a-35-229-224-205.ngrok-free.app/handle-message`, {
-        text: message.text.body
+        text: userText
       });
 
-      const fastApiResponse = response.data;
+      const responseMessage = response.data;
 
-      // Send a reply message as per the docs here https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
+      // Send the response back to the user on WhatsApp
       await axios({
         method: "POST",
         url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
@@ -37,19 +32,19 @@ app.post("/webhook", async (req, res) => {
         data: {
           messaging_product: "whatsapp",
           to: message.from,
-          text: { body: `Response from FastAPI: ${fastApiResponse}` },
+          text: { body: responseMessage },
           context: {
-            message_id: message.id, // Shows the message as a reply to the original user message
+            message_id: message.id,
           },
         },
       });
 
-      // Mark incoming message as read
+      // Mark the message as read
       await axios({
         method: "POST",
         url: `https://graph.facebook.com/v20.0/375773435616684/messages`,
         headers: {
-          Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+          Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
         },
         data: {
           messaging_product: "whatsapp",
@@ -59,27 +54,22 @@ app.post("/webhook", async (req, res) => {
       });
 
     } catch (error) {
-      console.error("Error forwarding message to FastAPI:", error);
+      console.error("Error processing message:", error);
     }
   }
 
   res.sendStatus(200);
 });
 
-// Accepts GET requests at the /webhook endpoint. You need this URL to set up the webhook initially.
-// Info on verification request payload: https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  // Check the mode and token sent are correct
   if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
-    // Respond with 200 OK and challenge token from the request
     res.status(200).send(challenge);
     console.log("Webhook verified successfully!");
   } else {
-    // Respond with '403 Forbidden' if verify tokens do not match
     res.sendStatus(403);
   }
 });
