@@ -30,7 +30,7 @@ app.post("/webhook", async (req, res) => {
         {
           messaging_product: "whatsapp",
           to: senderPhoneNumber,
-          text: { body: `Response from FastAPI: ${fastApiResponse}` },
+          text: { body: `Response from FastAPI: ${JSON.stringify(fastApiResponse)}` },  // <-- Stringify the response object
           context: { message_id: message.id }
         },
         {
@@ -40,6 +40,7 @@ app.post("/webhook", async (req, res) => {
           }
         }
       );
+      
 
       console.log("Message sent successfully:", replyResponse.data);
 
