@@ -13,11 +13,13 @@ app.post("/webhook", async (req, res) => {
 
   if (message?.type === "text") {
     const business_phone_number_id = req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
+    const senderPhoneNumber = message.from; // Extracting the sender's phone number
 
     try {
-      // Forward the message to Flask server
+      // Forward the message and phone number to Flask server
       const response = await axios.post(`https://2501-35-245-32-180.ngrok-free.app/handle-message`, {
-        text: message.text.body
+        text: message.text.body,
+        phone_number: senderPhoneNumber // Including the phone number in the request body
       });
 
       const fastApiResponse = response.data;
@@ -27,7 +29,7 @@ app.post("/webhook", async (req, res) => {
         `https://graph.facebook.com/v20.0/375773435616684/messages`,
         {
           messaging_product: "whatsapp",
-          to: message.from,
+          to: senderPhoneNumber,
           text: { body: `Response from FastAPI: ${fastApiResponse}` },
           context: { message_id: message.id }
         },
