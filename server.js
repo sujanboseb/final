@@ -17,7 +17,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Forward the message and phone number to Flask server
-      const response = await axios.post(`https://72d5-34-106-78-15.ngrok-free.app/handle-message`, {
+      const response = await axios.post(`https://3c0e-34-106-78-15.ngrok-free.app/handle-message`, {
         text: message.text.body,
         phone_number: senderPhoneNumber // Including the phone number in the request body
       });
