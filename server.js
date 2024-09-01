@@ -1,10 +1,11 @@
 const express = require("express");
 const axios = require("axios");
+require("dotenv").config(); // Make sure to load environment variables
 
 const app = express();
 app.use(express.json());
 
-const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT } = process.env;
+const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT, FASTAPI_URL } = process.env;
 
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
@@ -17,7 +18,7 @@ app.post("/webhook", async (req, res) => {
 
     try {
       // Forward the message and phone number to Flask server
-      const response = await axios.post(`https://b961-34-148-123-238.ngrok-free.app/handle-message`, {
+      const response = await axios.post(FASTAPI_URL, {
         text: message.text.body,
         phone_number: senderPhoneNumber // Including the phone number in the request body
       });
@@ -40,7 +41,6 @@ app.post("/webhook", async (req, res) => {
           }
         }
       );
-      
 
       console.log("Message sent successfully:", replyResponse.data);
 
