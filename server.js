@@ -7,6 +7,19 @@ app.use(express.json());
 
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT, FASTAPI_URL } = process.env;
 
+// Helper function to split long messages into smaller chunks
+function splitMessage(message, maxLength) {
+  const messageChunks = [];
+  let currentPosition = 0;
+  
+  while (currentPosition < message.length) {
+    messageChunks.push(message.slice(currentPosition, currentPosition + maxLength));
+    currentPosition += maxLength;
+  }
+  
+  return messageChunks;
+}
+
 app.post("/webhook", async (req, res) => {
   console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
@@ -17,7 +30,7 @@ app.post("/webhook", async (req, res) => {
     const senderPhoneNumber = message.from; // Extracting the sender's phone number
 
     try {
-      // Forward the message and phone number to Flask server
+      // Forward the message and phone number to the FastAPI server
       const response = await axios.post(FASTAPI_URL, {
         text: message.text.body,
         phone_number: senderPhoneNumber // Including the phone number in the request body
@@ -25,28 +38,37 @@ app.post("/webhook", async (req, res) => {
 
       const fastApiResponse = response.data;
 
-      // Send a reply message to the user
-      const replyResponse = await axios.post(
-        `https://graph.facebook.com/v20.0/375773435616684/messages`,
-        {
-          messaging_product: "whatsapp",
-          to: senderPhoneNumber,
-          text: { body: `Response from FastAPI: ${JSON.stringify(fastApiResponse)}` },  // <-- Stringify the response object
-          context: { message_id: message.id }
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      // Stringify the response object to send as a message
+      let responseText = `Response from FastAPI: ${JSON.stringify(fastApiResponse)}`;
 
-      console.log("Message sent successfully:", replyResponse.data);
+      // Check if the response exceeds the max character limit for WhatsApp messages (4096 chars)
+      const maxMessageLength = 4096;
+      const messageChunks = splitMessage(responseText, maxMessageLength);
+
+      // Send each chunk as a separate message
+      for (const chunk of messageChunks) {
+        const replyResponse = await axios.post(
+          `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+          {
+            messaging_product: "whatsapp",
+            to: senderPhoneNumber,
+            text: { body: chunk },  // Send the chunked message
+            context: { message_id: message.id }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        console.log("Message chunk sent successfully:", replyResponse.data);
+      }
 
       // Mark the incoming message as read
       await axios.post(
-        `https://graph.facebook.com/v20.0/375773435616684/messages`,
+        `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
         {
           messaging_product: "whatsapp",
           status: "read",
