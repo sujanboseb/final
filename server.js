@@ -1,11 +1,14 @@
 const express = require("express");
 const axios = require("axios");
-require("dotenv").config(); // Make sure to load environment variables
+require("dotenv").config(); // Load environment variables
 
 const app = express();
 app.use(express.json());
 
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT, FASTAPI_URL } = process.env;
+
+// In-memory cache to track processed message IDs
+const processedMessages = new Set();
 
 // Helper function to split long messages into smaller chunks
 function splitMessage(message, maxLength) {
@@ -25,15 +28,26 @@ app.post("/webhook", async (req, res) => {
 
   const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
+  // Check if the message is a text type
   if (message?.type === "text") {
     const business_phone_number_id = req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
     const senderPhoneNumber = message.from; // Extracting the sender's phone number
+    const messageId = message.id;  // Extracting the unique message ID
+
+    // Check if the message has already been processed to avoid duplicate responses
+    if (processedMessages.has(messageId)) {
+      console.log("Message already processed. Skipping.");
+      return res.sendStatus(200); // Early return if message already processed
+    }
+
+    // Mark the message as processed
+    processedMessages.add(messageId);
 
     try {
-      // Forward the message and phone number to the FastAPI server
+      // Forward the message and phone number to FastAPI server
       const response = await axios.post(FASTAPI_URL, {
         text: message.text.body,
-        phone_number: senderPhoneNumber // Including the phone number in the request body
+        phone_number: senderPhoneNumber // Include the phone number in the request body
       });
 
       const fastApiResponse = response.data;
@@ -53,7 +67,7 @@ app.post("/webhook", async (req, res) => {
             messaging_product: "whatsapp",
             to: senderPhoneNumber,
             text: { body: chunk },  // Send the chunked message
-            context: { message_id: message.id }
+            context: { message_id: messageId }
           },
           {
             headers: {
@@ -72,7 +86,7 @@ app.post("/webhook", async (req, res) => {
         {
           messaging_product: "whatsapp",
           status: "read",
-          message_id: message.id
+          message_id: messageId
         },
         {
           headers: {
