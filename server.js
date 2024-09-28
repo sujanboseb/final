@@ -15,18 +15,18 @@ app.post("/webhook", async (req, res) => {
 
     if (message?.type === "text") {
         const senderPhoneNumber = message.from; // Extract sender's phone number
-        const businessPhoneNumberId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+        const businessPhoneNumberId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id; // Move this line to the top
 
         try {
             // Forward the message and phone number to the Flask server
             const fastApiResponse = await forwardMessageToFlask(message.text.body, senderPhoneNumber);
 
             // Send a reply message to the user
-            await sendReplyToUser(senderPhoneNumber, fastApiResponse, message.id);
+            await sendReplyToUser(businessPhoneNumberId, senderPhoneNumber, fastApiResponse, message.id); // Pass businessPhoneNumberId here
             console.log("Message sent successfully.");
 
             // Mark the incoming message as read
-            await markMessageAsRead(message.id);
+            await markMessageAsRead(businessPhoneNumberId, message.id); // Pass businessPhoneNumberId here
         } catch (error) {
             console.error("Error processing message:", error.response ? error.response.data : error.message);
         }
@@ -45,9 +45,9 @@ const forwardMessageToFlask = async (text, phoneNumber) => {
 };
 
 // Function to send a reply to the user
-const sendReplyToUser = async (phoneNumber, fastApiResponse, messageId) => {
+const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiResponse, messageId) => { // Accept businessPhoneNumberId as a parameter
     const replyResponse = await axios.post(
-        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`, // Use businessPhoneNumberId
         {
             messaging_product: "whatsapp",
             to: phoneNumber,
@@ -65,9 +65,9 @@ const sendReplyToUser = async (phoneNumber, fastApiResponse, messageId) => {
 };
 
 // Function to mark the incoming message as read
-const markMessageAsRead = async (messageId) => {
+const markMessageAsRead = async (businessPhoneNumberId, messageId) => { // Accept businessPhoneNumberId as a parameter
     await axios.post(
-        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`, // Use businessPhoneNumberId
         {
             messaging_product: "whatsapp",
             status: "read",
