@@ -7,120 +7,99 @@ app.use(express.json());
 
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT, FASTAPI_URL } = process.env;
 
-// In-memory cache to track processed message IDs
-const processedMessages = new Set();
-
-// Helper function to split long messages into smaller chunks
-function splitMessage(message, maxLength) {
-  const messageChunks = [];
-  let currentPosition = 0;
-  
-  while (currentPosition < message.length) {
-    messageChunks.push(message.slice(currentPosition, currentPosition + maxLength));
-    currentPosition += maxLength;
-  }
-  
-  return messageChunks;
-}
-
+// Handle incoming WhatsApp messages
 app.post("/webhook", async (req, res) => {
-  console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
+    console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
-  const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  // Check if the message is a text type
-  if (message?.type === "text") {
-    const business_phone_number_id = req.body.entry?.[0].changes?.[0].value?.metadata?.phone_number_id;
-    const senderPhoneNumber = message.from; // Extracting the sender's phone number
-    const messageId = message.id;  // Extracting the unique message ID
+    if (message?.type === "text") {
+        const senderPhoneNumber = message.from; // Extract sender's phone number
+        const businessPhoneNumberId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
-    // Check if the message has already been processed to avoid duplicate responses
-    if (processedMessages.has(messageId)) {
-      console.log("Message already processed. Skipping.");
-      return res.sendStatus(200); // Early return if message already processed
+        try {
+            // Forward the message and phone number to the Flask server
+            const fastApiResponse = await forwardMessageToFlask(message.text.body, senderPhoneNumber);
+
+            // Send a reply message to the user
+            await sendReplyToUser(senderPhoneNumber, fastApiResponse, message.id);
+            console.log("Message sent successfully.");
+
+            // Mark the incoming message as read
+            await markMessageAsRead(message.id);
+        } catch (error) {
+            console.error("Error processing message:", error.response ? error.response.data : error.message);
+        }
     }
 
-    // Mark the message as processed
-    processedMessages.add(messageId);
+    res.sendStatus(200); // Acknowledge receipt of the message
+});
 
-    try {
-      // Forward the message and phone number to FastAPI server
-      const response = await axios.post(FASTAPI_URL, {
-        text: message.text.body,
-        phone_number: senderPhoneNumber // Include the phone number in the request body
-      });
+// Function to forward the message to the Flask server
+const forwardMessageToFlask = async (text, phoneNumber) => {
+    const response = await axios.post(FASTAPI_URL, {
+        text: text,
+        phone_number: phoneNumber
+    });
+    return response.data; // Return the response data for further processing
+};
 
-      const fastApiResponse = response.data;
-
-      // Stringify the response object to send as a message
-      let responseText = `Response from FastAPI: ${JSON.stringify(fastApiResponse)}`;
-
-      // Check if the response exceeds the max character limit for WhatsApp messages (4096 chars)
-      const maxMessageLength = 4096;
-      const messageChunks = splitMessage(responseText, maxMessageLength);
-
-      // Send each chunk as a separate message
-      for (const chunk of messageChunks) {
-        const replyResponse = await axios.post(
-          `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
-          {
-            messaging_product: "whatsapp",
-            to: senderPhoneNumber,
-            text: { body: chunk },  // Send the chunked message
-            context: { message_id: messageId }
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-
-        console.log("Message chunk sent successfully:", replyResponse.data);
-      }
-
-      // Mark the incoming message as read
-      await axios.post(
-        `https://graph.facebook.com/v20.0/${business_phone_number_id}/messages`,
+// Function to send a reply to the user
+const sendReplyToUser = async (phoneNumber, fastApiResponse, messageId) => {
+    const replyResponse = await axios.post(
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
         {
-          messaging_product: "whatsapp",
-          status: "read",
-          message_id: messageId
+            messaging_product: "whatsapp",
+            to: phoneNumber,
+            text: { body: `Response from FastAPI: ${JSON.stringify(fastApiResponse)}` },
+            context: { message_id: messageId }
         },
         {
-          headers: {
-            Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
+            headers: {
+                Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
         }
-      );
+    );
+    return replyResponse.data; // Optional: return the reply response if needed
+};
 
-    } catch (error) {
-      console.error("Error forwarding message or sending response:", error.response ? error.response.data : error.message);
-    }
-  }
+// Function to mark the incoming message as read
+const markMessageAsRead = async (messageId) => {
+    await axios.post(
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
+        {
+            messaging_product: "whatsapp",
+            status: "read",
+            message_id: messageId
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+};
 
-  res.sendStatus(200);
-});
-
+// Verify the webhook during setup
 app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+    const { mode, token, challenge } = req.query;
 
-  if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
-    res.status(200).send(challenge);
-    console.log("Webhook verified successfully!");
-  } else {
-    res.sendStatus(403);
-  }
+    if (mode === "subscribe" && token === WEBHOOK_VERIFY_TOKEN) {
+        res.status(200).send(challenge);
+        console.log("Webhook verified successfully!");
+    } else {
+        res.sendStatus(403); // Forbidden
+    }
 });
 
+// Root endpoint
 app.get("/", (req, res) => {
-  res.send(`<pre>Nothing to see here. Checkout README.md to start.</pre>`);
+    res.send(`<pre>Nothing to see here. Checkout README.md to start.</pre>`);
 });
 
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server is listening on port: ${PORT}`);
+    console.log(`Server is listening on port: ${PORT}`);
 });
