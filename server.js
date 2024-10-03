@@ -7,28 +7,38 @@ app.use(express.json());
 
 const { WEBHOOK_VERIFY_TOKEN, WHATSAPP_API_TOKEN, PORT, FASTAPI_URL } = process.env;
 
+// Store processed message IDs to avoid duplicate replies
+const processedMessageIds = new Set();
+
 // Handle incoming WhatsApp messages
 app.post("/webhook", async (req, res) => {
     console.log("Incoming webhook message:", JSON.stringify(req.body, null, 2));
 
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const messageId = message?.id;
 
-    if (message?.type === "text") {
+    // Check if the message has already been processed
+    if (message?.type === "text" && messageId && !processedMessageIds.has(messageId)) {
         const senderPhoneNumber = message.from; // Extract sender's phone number
-        const businessPhoneNumberId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id; // Move this line to the top
+        const businessPhoneNumberId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
         try {
+            // Mark the message as being processed to avoid duplicates
+            processedMessageIds.add(messageId);
+
             // Forward the message and phone number to the Flask server
             const fastApiResponse = await forwardMessageToFlask(message.text.body, senderPhoneNumber);
 
             // Send a reply message to the user
-            await sendReplyToUser(businessPhoneNumberId, senderPhoneNumber, fastApiResponse, message.id); // Pass businessPhoneNumberId here
-            console.log("Message sent successfully.");
+            await sendReplyToUser(businessPhoneNumberId, senderPhoneNumber, fastApiResponse, messageId);
 
             // Mark the incoming message as read
-            await markMessageAsRead(businessPhoneNumberId, message.id); // Pass businessPhoneNumberId here
+            await markMessageAsRead(businessPhoneNumberId, messageId);
+            console.log("Message sent and marked as read successfully.");
         } catch (error) {
             console.error("Error processing message:", error.response ? error.response.data : error.message);
+            // Optionally, remove the messageId from the set in case of an error
+            processedMessageIds.delete(messageId);
         }
     }
 
@@ -45,9 +55,9 @@ const forwardMessageToFlask = async (text, phoneNumber) => {
 };
 
 // Function to send a reply to the user
-const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiResponse, messageId) => { // Accept businessPhoneNumberId as a parameter
+const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiResponse, messageId) => {
     const replyResponse = await axios.post(
-        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`, // Use businessPhoneNumberId
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
         {
             messaging_product: "whatsapp",
             to: phoneNumber,
@@ -61,13 +71,13 @@ const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiRespon
             }
         }
     );
-    return replyResponse.data; // Optional: return the reply response if needed
+    return replyResponse.data;
 };
 
 // Function to mark the incoming message as read
-const markMessageAsRead = async (businessPhoneNumberId, messageId) => { // Accept businessPhoneNumberId as a parameter
+const markMessageAsRead = async (businessPhoneNumberId, messageId) => {
     await axios.post(
-        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`, // Use businessPhoneNumberId
+        `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
         {
             messaging_product: "whatsapp",
             status: "read",
