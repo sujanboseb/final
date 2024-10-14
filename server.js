@@ -61,7 +61,7 @@ const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiRespon
         {
             messaging_product: "whatsapp",
             to: phoneNumber,
-            text: { body: `Response from FastAPI: ${JSON.stringify(fastApiResponse)}` },
+            text: { body: `${JSON.stringify(fastApiResponse)}` },
             context: { message_id: messageId }
         },
         {
