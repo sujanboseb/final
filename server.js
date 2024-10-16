@@ -26,7 +26,7 @@ app.post("/webhook", async (req, res) => {
             // Mark the message as being processed to avoid duplicates
             processedMessageIds.add(messageId);
 
-            // Forward the message and phone number to the Flask server
+            // Forward the message and phone number to the FastAPI server
             const fastApiResponse = await forwardMessageToFlask(message.text.body, senderPhoneNumber);
 
             // Send a reply message to the user
@@ -45,7 +45,7 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200); // Acknowledge receipt of the message
 });
 
-// Function to forward the message to the Flask server
+// Function to forward the message to the FastAPI server
 const forwardMessageToFlask = async (text, phoneNumber) => {
     const response = await axios.post(FASTAPI_URL, {
         text: text,
@@ -56,12 +56,15 @@ const forwardMessageToFlask = async (text, phoneNumber) => {
 
 // Function to send a reply to the user
 const sendReplyToUser = async (businessPhoneNumberId, phoneNumber, fastApiResponse, messageId) => {
+    // Remove double quotes from the fastApiResponse if any
+    const cleanedResponse = JSON.stringify(fastApiResponse).replace(/"/g, '');
+
     const replyResponse = await axios.post(
         `https://graph.facebook.com/v20.0/${businessPhoneNumberId}/messages`,
         {
             messaging_product: "whatsapp",
             to: phoneNumber,
-            text: { body: `${JSON.stringify(fastApiResponse)}` },
+            text: { body: cleanedResponse },
             context: { message_id: messageId }
         },
         {
